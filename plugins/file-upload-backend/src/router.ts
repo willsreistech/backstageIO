@@ -10,8 +10,6 @@ import https from 'https';
 import http from 'http';
 import { Octokit } from '@octokit/rest';
 
-// Files larger than this threshold are pushed via Git LFS instead of the Contents API
-const LFS_THRESHOLD = 100 * 1024 * 1024; // 100 MB (overridden by config at runtime)
 
 /** Calculates the SHA-256 hash of a file using streams (memory-efficient for large files). */
 function sha256ofFile(filePath: string): Promise<string> {

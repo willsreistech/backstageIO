@@ -85,20 +85,14 @@ COPY --chown=node:node app-config.yaml app-config.production.yaml ./
 RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
 
 # ── Runtime environment variable defaults ─────────────────────────────────────
-# Override APP_BASE_URL with your server's public URL (e.g. http://192.168.1.10:7007)
+# APP_BASE_URL: URL pública do servidor (ex: http://192.168.1.10:7007)
 ENV APP_BASE_URL=http://localhost:7007
 
-# GitHub integration
-ENV GITHUB_TOKEN=""
-ENV GITHUB_OWNER=""
-ENV GITHUB_REPO=""
+# GitHub integration — valores obrigatórios, injetados em runtime
 ENV GITHUB_BRANCH=main
 
-# PostgreSQL (production database)
-ENV POSTGRES_HOST=localhost
+# PostgreSQL — valores obrigatórios, injetados em runtime
 ENV POSTGRES_PORT=5432
-ENV POSTGRES_USER=backstage
-ENV POSTGRES_PASSWORD=""
 
 # ── Persistent storage for user uploads ───────────────────────────────────────
 # The file-upload plugin writes to ~/data/uploads  →  /home/node/data/uploads

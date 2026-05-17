@@ -1,11 +1,5 @@
 version: '3.9'
 
-# ── Base – usado como template pelos arquivos de ambiente ─────────────────────
-# Não execute este arquivo diretamente. Use:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-#   docker compose -f docker-compose.yml -f docker-compose.qa.yml  up -d
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -23,11 +17,13 @@ services:
       retries: 5
 
   backstage:
-    image: backstage:${IMAGE_TAG:-latest}
+    image: backstage:latest
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "7007:7007"
     environment:
       APP_BASE_URL:      ${APP_BASE_URL}
       GITHUB_TOKEN:      ${GITHUB_TOKEN}
