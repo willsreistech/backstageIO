@@ -69,6 +69,16 @@ fileUpload:
     repo: ${GITHUB_REPO}     # Repository name (must exist)
     branch: ${GITHUB_BRANCH} # Branch to push to (default: main)
     targetDir: uploads        # Sub-directory inside the repo
+  lfs:
+    # Files larger than this (MB) are automatically sent via Git LFS
+    sizeThresholdMb: 100
+    # These extensions ALWAYS use Git LFS regardless of file size
+    extensions:
+      - .ear
+      - .exe
+      - .war
+      - .jar
+      - .zip
 
 proxy:
   ### Example for how to add a proxy endpoint for the frontend.
@@ -115,7 +125,7 @@ catalog:
     entityFilename: catalog-info.yaml
     pullRequestBranchName: backstage-integration
   rules:
-    - allow: [Component, System, API, Resource, Location]
+    - allow: [Component, System, API, Resource, Location, Template]
   locations:
     # Local example data, file locations are relative to the backend process, typically `packages/backend`
     - type: file
@@ -142,6 +152,19 @@ catalog:
     #   target: https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/acme-corp.yaml
     #   rules:
     #     - allow: [User, Group]
+
+    # ── K9 — Kind Kubernetes Lab ─────────────────────────────────────────────
+    # Component de infraestrutura Kind
+    - type: url
+      target: https://github.com/willsreis/k9/blob/main/catalog-info.yaml
+      rules:
+        - allow: [Component, System]
+
+    # Templates Scaffolder: criar / remover / status de clusters Kind
+    - type: url
+      target: https://github.com/willsreis/k9/blob/main/backstage/create-cluster-template.yaml
+      rules:
+        - allow: [Template]
 
 kubernetes:
   # see https://backstage.io/docs/features/kubernetes/configuration for kubernetes configuration options

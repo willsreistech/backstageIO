@@ -1,0 +1,49 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build image & deploy to server
+    runs-on: self-hosted    # runner instalado diretamente no servidor
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Build Docker image ─────────────────────────────────────────────────
+      - name: Build image
+        run: docker build -t backstage:latest .
+
+      # ── 3. Escrever .env com os secrets ──────────────────────────────────────
+      - name: Write .env
+        run: |
+          mkdir -p ~/backstage
+          cat > ~/backstage/.env << 'ENVEOF'
+          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
+          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
+          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
+          GITHUB_REPO=${{ secrets.GHUB_REPO }}
+          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          ENVEOF
+
+      # ── 4. Copiar compose e subir stack ──────────────────────────────────────
+      - name: Deploy stack
+        run: |
+          cp docker-compose.yml ~/backstage/docker-compose.yml
+          cd ~/backstage
+          docker compose up -d --remove-orphans
+
+      # ── 5. Confirmar status ───────────────────────────────────────────────────
+      - name: Health check
+        run: |
+          sleep 8
+          cd ~/backstage
+          docker compose ps
+
