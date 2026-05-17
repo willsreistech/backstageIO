@@ -1,0 +1,15 @@
+version: '3.9'
+
+# ── Development overlay ───────────────────────────────────────────────────────
+# Porta do host: 7008 (backstage) / 5433 (postgres)
+# Quando migrar para host próprio: mude as portas para 7007 / 5432
+
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+
+  backstage:
+    image: backstage:development
+    ports:
+      - "7008:7007"

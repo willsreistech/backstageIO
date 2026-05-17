@@ -4,22 +4,112 @@ on:
   push:
     branches:
       - main
+      - develop
+      - 'feature/**'
+      - 'release/**'
+
+# ── Cada job usa:
+#   • environment: → puxar secrets do environment correto no GitHub
+#   • runs-on: [self-hosted, <env>] → hoje todos apontam pro mesmo runner;
+#     quando migrar, basta registrar um runner com o label certo no novo host
+#     sem alterar este arquivo.
 
 jobs:
-  deploy:
-    name: Build image & deploy to server
-    runs-on: self-hosted    # runner instalado diretamente no servidor
+
+  # ── development: feature/* e develop ──────────────────────────────────────
+  deploy-development:
+    name: Deploy → development
+    if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/')
+    runs-on: [self-hosted, development]
+    environment: development
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Build Docker image ─────────────────────────────────────────────────
+      - name: Build image
+        run: docker build -t backstage:development .
+
+      - name: Write .env
+        run: |
+          mkdir -p ~/backstage-dev
+          cat > ~/backstage-dev/.env << 'ENVEOF'
+          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
+          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
+          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
+          GITHUB_REPO=${{ secrets.GHUB_REPO }}
+          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          ENVEOF
+
+      - name: Deploy stack
+        run: |
+          cp docker-compose.yml     ~/backstage-dev/docker-compose.yml
+          cp docker-compose.dev.yml ~/backstage-dev/docker-compose.override.yml
+          cd ~/backstage-dev
+          docker compose up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          sleep 8
+          cd ~/backstage-dev
+          docker compose ps
+
+  # ── quality: release/* ────────────────────────────────────────────────────
+  deploy-quality:
+    name: Deploy → quality
+    if: startsWith(github.ref, 'refs/heads/release/')
+    runs-on: [self-hosted, quality]
+    environment: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t backstage:quality .
+
+      - name: Write .env
+        run: |
+          mkdir -p ~/backstage-qa
+          cat > ~/backstage-qa/.env << 'ENVEOF'
+          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
+          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
+          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
+          GITHUB_REPO=${{ secrets.GHUB_REPO }}
+          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          ENVEOF
+
+      - name: Deploy stack
+        run: |
+          cp docker-compose.yml    ~/backstage-qa/docker-compose.yml
+          cp docker-compose.qa.yml ~/backstage-qa/docker-compose.override.yml
+          cd ~/backstage-qa
+          docker compose up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          sleep 8
+          cd ~/backstage-qa
+          docker compose ps
+
+  # ── production: main ──────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy → production
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, production]
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Build image
         run: docker build -t backstage:latest .
 
-      # ── 3. Escrever .env com os secrets ──────────────────────────────────────
       - name: Write .env
         run: |
           mkdir -p ~/backstage
@@ -33,17 +123,18 @@ jobs:
           POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           ENVEOF
 
-      # ── 4. Copiar compose e subir stack ──────────────────────────────────────
       - name: Deploy stack
         run: |
-          cp docker-compose.yml ~/backstage/docker-compose.yml
+          cp docker-compose.yml      ~/backstage/docker-compose.yml
+          cp docker-compose.prod.yml ~/backstage/docker-compose.override.yml
           cd ~/backstage
           docker compose up -d --remove-orphans
 
-      # ── 5. Confirmar status ───────────────────────────────────────────────────
       - name: Health check
         run: |
           sleep 8
           cd ~/backstage
           docker compose ps
+
+
 

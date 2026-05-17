@@ -1,0 +1,14 @@
+version: '3.9'
+
+# ── Production overlay ────────────────────────────────────────────────────────
+# Porta do host: 7007 (backstage) / 5432 (postgres)
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backstage:
+    image: backstage:latest
+    ports:
+      - "7007:7007"

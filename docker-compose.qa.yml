@@ -1,0 +1,15 @@
+version: '3.9'
+
+# ── Quality overlay ───────────────────────────────────────────────────────────
+# Porta do host: 7009 (backstage) / 5434 (postgres)
+# Quando migrar para host próprio: mude as portas para 7007 / 5432
+
+services:
+  postgres:
+    ports:
+      - "5434:5432"
+
+  backstage:
+    image: backstage:quality
+    ports:
+      - "7009:7007"
