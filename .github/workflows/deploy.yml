@@ -8,133 +8,53 @@ on:
       - 'feature/**'
       - 'release/**'
 
-# ── Cada job usa:
-#   • environment: → puxar secrets do environment correto no GitHub
-#   • runs-on: [self-hosted, <env>] → hoje todos apontam pro mesmo runner;
-#     quando migrar, basta registrar um runner com o label certo no novo host
-#     sem alterar este arquivo.
+# ── Roteamento por branch ─────────────────────────────────────────────────────
+# Cada job apenas decide (via `if`) se aquele ambiente deve rodar e delega TODO
+# o trabalho para o reusable workflow `deploy-reusable.yml`, variando só os
+# `inputs`. `secrets: inherit` repassa os secrets do repo/environment.
+#
+#   • environment / runner  → apontam pro environment e runner self-hosted certos
+#   • deploy-dir            → diretório no host onde o stack sobe
+#   • compose-override      → overlay do docker-compose por ambiente
+#   • image-tag             → tag da imagem construída
 
 jobs:
 
-  # ── development: feature/* e develop ──────────────────────────────────────
-  deploy-development:
-    name: Deploy → development
+  # ── development: develop e feature/* ──────────────────────────────────────
+  development:
+    name: development
     if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/')
-    runs-on: [self-hosted, development]
-    environment: development
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t backstage:development .
-
-      - name: Write .env
-        run: |
-          mkdir -p ~/backstage-dev
-          cat > ~/backstage-dev/.env << 'ENVEOF'
-          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
-          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
-          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
-          GITHUB_REPO=${{ secrets.GHUB_REPO }}
-          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          ENVEOF
-
-      - name: Deploy stack
-        run: |
-          cp docker-compose.yml     ~/backstage-dev/docker-compose.yml
-          cp docker-compose.dev.yml ~/backstage-dev/docker-compose.override.yml
-          cd ~/backstage-dev
-          docker compose up -d --remove-orphans
-
-      - name: Health check
-        run: |
-          sleep 8
-          cd ~/backstage-dev
-          docker compose ps
+    uses: ./.github/workflows/deploy-reusable.yml
+    secrets: inherit
+    with:
+      environment: development
+      runner: development
+      deploy-dir: ~/backstage-dev
+      compose-override: docker-compose.dev.yml
+      image-tag: backstage:development
 
   # ── quality: release/* ────────────────────────────────────────────────────
-  deploy-quality:
-    name: Deploy → quality
+  quality:
+    name: quality
     if: startsWith(github.ref, 'refs/heads/release/')
-    runs-on: [self-hosted, quality]
-    environment: quality
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t backstage:quality .
-
-      - name: Write .env
-        run: |
-          mkdir -p ~/backstage-qa
-          cat > ~/backstage-qa/.env << 'ENVEOF'
-          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
-          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
-          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
-          GITHUB_REPO=${{ secrets.GHUB_REPO }}
-          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          ENVEOF
-
-      - name: Deploy stack
-        run: |
-          cp docker-compose.yml    ~/backstage-qa/docker-compose.yml
-          cp docker-compose.qa.yml ~/backstage-qa/docker-compose.override.yml
-          cd ~/backstage-qa
-          docker compose up -d --remove-orphans
-
-      - name: Health check
-        run: |
-          sleep 8
-          cd ~/backstage-qa
-          docker compose ps
+    uses: ./.github/workflows/deploy-reusable.yml
+    secrets: inherit
+    with:
+      environment: quality
+      runner: quality
+      deploy-dir: ~/backstage-qa
+      compose-override: docker-compose.qa.yml
+      image-tag: backstage:quality
 
   # ── production: main ──────────────────────────────────────────────────────
-  deploy-production:
-    name: Deploy → production
+  production:
+    name: production
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, production]
-    environment: production
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t backstage:latest .
-
-      - name: Write .env
-        run: |
-          mkdir -p ~/backstage
-          cat > ~/backstage/.env << 'ENVEOF'
-          APP_BASE_URL=${{ secrets.APP_BASE_URL }}
-          GITHUB_TOKEN=${{ secrets.GHUB_TOKEN }}
-          GITHUB_OWNER=${{ secrets.GHUB_OWNER }}
-          GITHUB_REPO=${{ secrets.GHUB_REPO }}
-          GITHUB_BRANCH=${{ secrets.GHUB_BRANCH }}
-          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          ENVEOF
-
-      - name: Deploy stack
-        run: |
-          cp docker-compose.yml      ~/backstage/docker-compose.yml
-          cp docker-compose.prod.yml ~/backstage/docker-compose.override.yml
-          cd ~/backstage
-          docker compose up -d --remove-orphans
-
-      - name: Health check
-        run: |
-          sleep 8
-          cd ~/backstage
-          docker compose ps
-
-
-
+    uses: ./.github/workflows/deploy-reusable.yml
+    secrets: inherit
+    with:
+      environment: production
+      runner: production
+      deploy-dir: ~/backstage
+      compose-override: docker-compose.prod.yml
+      image-tag: backstage:latest

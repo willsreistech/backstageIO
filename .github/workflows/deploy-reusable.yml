@@ -1,0 +1,85 @@
+name: Deploy (reusable)
+
+# ── Reusable workflow ─────────────────────────────────────────────────────────
+# Contém TODA a lógica de deploy (build da imagem, geração do .env a partir dos
+# secrets, subida do stack e health check). É chamado por `deploy.yml`, uma vez
+# por ambiente, apenas variando os `inputs`. Assim não há duplicação de passos.
+#
+# Os secrets são herdados do caller via `secrets: inherit`. Como o job declara
+# `environment: ${{ inputs.environment }}`, os secrets do environment correto
+# ficam disponíveis automaticamente.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Nome do environment do GitHub (development/quality/production)
+        required: true
+        type: string
+      runner:
+        description: Label do runner self-hosted (development/quality/production)
+        required: true
+        type: string
+      deploy-dir:
+        description: Diretório de deploy no host (ex. ~/backstage)
+        required: true
+        type: string
+      compose-override:
+        description: Arquivo de override do docker-compose (ex. docker-compose.prod.yml)
+        required: true
+        type: string
+      image-tag:
+        description: Tag da imagem Docker a construir (ex. backstage:latest)
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy → ${{ inputs.environment }}
+    runs-on: [self-hosted, "${{ inputs.runner }}"]
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "${{ inputs.image-tag }}" .
+
+      - name: Write .env
+        # Secrets do repositório/environment expostos como variáveis de ambiente
+        # (sem o prefixo reservado GITHUB_) e gravados no .env com os nomes que a
+        # aplicação espera (GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH).
+        env:
+          APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
+          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
+          GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
+          GHUB_REPO:         ${{ secrets.GHUB_REPO }}
+          GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
+          POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          mkdir -p ${{ inputs.deploy-dir }}
+          cat > ${{ inputs.deploy-dir }}/.env << ENVEOF
+          APP_BASE_URL=${APP_BASE_URL}
+          GITHUB_TOKEN=${GHUB_TOKEN}
+          GITHUB_OWNER=${GHUB_OWNER}
+          GITHUB_REPO=${GHUB_REPO}
+          GITHUB_BRANCH=${GHUB_BRANCH}
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          ENVEOF
+          chmod 600 ${{ inputs.deploy-dir }}/.env
+
+      - name: Deploy stack
+        run: |
+          cp docker-compose.yml            ${{ inputs.deploy-dir }}/docker-compose.yml
+          cp ${{ inputs.compose-override }} ${{ inputs.deploy-dir }}/docker-compose.override.yml
+          cd ${{ inputs.deploy-dir }}
+          docker compose up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          sleep 8
+          cd ${{ inputs.deploy-dir }}
+          docker compose ps
