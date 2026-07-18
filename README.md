@@ -134,14 +134,11 @@ GITHUB_REPO=nome-do-repositorio
 GITHUB_BRANCH=main
 ```
 
-### 2. Carregue o `.env` no shell
+### 2. Pronto — o `.env` é carregado automaticamente
 
-```bash
-# Bash / Zsh
-export $(grep -v '^#' .env | xargs)
-```
+O `yarn start` já carrega o `.env` automaticamente (via `dotenv-cli`), então **não é mais necessário** rodar `export ...` manualmente a cada sessão. O `app-config.yaml` interpola as variáveis via `${VARIAVEL}`.
 
-O Backstage lê as variáveis de ambiente automaticamente ao iniciar — o `app-config.yaml` as interpola via `${VARIAVEL}`.
+> Variáveis já exportadas no shell têm precedência sobre o `.env`. Assim, se preferir, você ainda pode sobrescrever pontualmente com `GITHUB_TOKEN=ghp_xxx yarn start`.
 
 ---
 
