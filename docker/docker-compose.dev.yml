@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  backstage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backstage-dev
+    ports:
+      - "7007:7007"
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: ["yarn", "dev"]
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+      POSTGRES_DB: backstage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

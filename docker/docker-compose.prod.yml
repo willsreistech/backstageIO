@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  backstage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backstage-prod
+    ports:
+      - "7007:7007"
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+      POSTGRES_DB: backstage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
