@@ -160,13 +160,13 @@ catalog:
     # ── K9 — Kind Kubernetes Lab ─────────────────────────────────────────────
     # Component de infraestrutura Kind
     - type: url
-      target: https://github.com/willsreis/k9/blob/main/catalog-info.yaml
+      target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml
       rules:
         - allow: [Component, System]
 
     # Templates Scaffolder: criar / remover / status de clusters Kind
     - type: url
-      target: https://github.com/willsreis/k9/blob/main/backstage/create-cluster-template.yaml
+      target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
       rules:
         - allow: [Template]
 
