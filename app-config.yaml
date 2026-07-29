@@ -95,7 +95,11 @@ proxy:
 techdocs:
   builder: 'local' # Alternatives - 'external'
   generator:
-    runIn: 'docker' # Alternatives - 'local'
+    # 'local' roda o mkdocs direto no host (precisa `pip install mkdocs-techdocs-core`).
+    # NÃO usamos 'docker' porque o runner atrás do FortiGate não consegue puxar a
+    # imagem `spotify/techdocs` do Docker Hub (SSL-inspection bloqueia o pull).
+    # NOTA: na nova arquitetura (sem FortiGate) 'docker' volta a ser uma opção.
+    runIn: 'local' # Alternatives - 'docker'
   publisher:
     type: 'local' # Alternatives - 'googleGcs' or 'awsS3'. Read documentation for using alternatives.
 

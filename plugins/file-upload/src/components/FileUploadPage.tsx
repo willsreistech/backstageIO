@@ -260,7 +260,14 @@ export const FileUploadPage = () => {
       const data: UploadResult = await response.json();
       setState(response.ok || response.status === 207 ? 'success' : 'error');
       setResult(data);
-      if (response.ok) fetchItems(selectedRepo, currentPath);
+      if (response.ok) {
+        fetchItems(selectedRepo, currentPath);
+        // Reset the file selection so the drop zone returns to its empty
+        // default and the same file can be picked again (a native <input
+        // type="file"> won't re-fire onChange unless its value is cleared).
+        setFile(null);
+        if (inputRef.current) inputRef.current.value = '';
+      }
     } catch (err: any) {
       setState('error');
       setResult({ message: 'Request failed', error: err.message });
