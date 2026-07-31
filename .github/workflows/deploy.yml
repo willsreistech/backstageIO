@@ -30,7 +30,7 @@ jobs:
       runner: development
       ssh-host: 192.168.56.10
       ssh-user: wsr
-      deploy-dir: ~/backstage-dev
+      deploy-dir: /home/wsr/backstage-dev
       image-tag: backstage:development
 
   # ── quality: release/* ────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ jobs:
       runner: quality
       ssh-host: 192.168.56.10
       ssh-user: wsr
-      deploy-dir: ~/backstage-qa
+      deploy-dir: /home/wsr/backstage-qa
       image-tag: backstage:quality
 
   # ── production: main ──────────────────────────────────────────────────────
@@ -58,5 +58,5 @@ jobs:
       runner: production
       ssh-host: 192.168.56.10
       ssh-user: wsr
-      deploy-dir: ~/backstage
+      deploy-dir: /home/wsr/backstage
       image-tag: backstage:latest
