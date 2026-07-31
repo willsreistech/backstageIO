@@ -1,0 +1,27 @@
+# Config extra carregada POR ÚLTIMO no deploy (via docker-compose `command`).
+#
+# Por que existe: no Backstage, quando várias configs são carregadas, as LISTAS
+# são SUBSTITUÍDAS (não concatenadas). A app-config.production.yaml define
+# `catalog.locations` só com os exemplos, o que APAGARIA o k9. Aqui redefinimos
+# a lista COMPLETA (exemplos + k9), e como esta é a última config carregada, ela
+# vence.
+#
+# Este arquivo é montado read-only em /app/app-config.deploy.yaml pelo compose,
+# então não precisa entrar na imagem.
+catalog:
+  locations:
+    # Dados de exemplo (paths relativos ao cwd do backend = /app)
+    - type: file
+      target: ./examples/entities.yaml
+    - type: file
+      target: ./examples/template/template.yaml
+      rules:
+        - allow: [Template]
+    - type: file
+      target: ./examples/org.yaml
+      rules:
+        - allow: [User, Group]
+
+    # ── k9 — Kind Kubernetes Lab (TechDocs) ──────────────────────────────────
+    - type: url
+      target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml

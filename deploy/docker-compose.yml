@@ -1,0 +1,60 @@
+# Stack de deploy (backend Backstage + Postgres).
+# A pipeline (deploy-reusable.yml) copia este arquivo + app-config.deploy.yaml
+# + um .env (gerado a partir dos secrets do Environment) para o deploy-dir do
+# host e roda `docker compose up -d`. Todos os ${...} vêm desse .env.
+services:
+  backstage:
+    image: ${IMAGE_TAG:-backstage:latest}
+    container_name: backstage
+    restart: unless-stopped
+    ports:
+      - "${BACKSTAGE_PORT:-7007}:7007"
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL}
+      # Postgres (serviço abaixo, mesma rede do compose)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # GitHub (integrations + file-upload + TechDocs lendo o repo k9)
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_OWNER: ${GITHUB_OWNER:-willsreistech}
+      GITHUB_REPO: ${GITHUB_REPO:-k9}
+      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
+    volumes:
+      # Config extra (readiciona o catálogo do k9, que a app-config.production
+      # sobrescreveria). Montada read-only.
+      - ./app-config.deploy.yaml:/app/app-config.deploy.yaml:ro
+    command:
+      - node
+      - packages/backend
+      - --config
+      - app-config.yaml
+      - --config
+      - app-config.production.yaml
+      - --config
+      - app-config.deploy.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15
+    container_name: backstage-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Banco default = mesmo nome do usuário (o pg-client conecta nele antes de
+      # o Backstage criar os bancos backstage_plugin_*).
+      POSTGRES_DB: ${POSTGRES_USER}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

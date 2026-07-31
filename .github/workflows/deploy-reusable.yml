@@ -1,9 +1,10 @@
 name: Deploy (reusable)
 
 # ── Reusable workflow ─────────────────────────────────────────────────────────
-# Contém TODA a lógica de deploy (build da imagem, geração do .env a partir dos
-# secrets, subida do stack e health check). É chamado por `deploy.yml`, uma vez
-# por ambiente, apenas variando os `inputs`. Assim não há duplicação de passos.
+# Contém TODA a lógica de deploy: build do app no runner, build da imagem Docker
+# (com o gerador MkDocs/TechDocs embutido), geração do .env a partir dos secrets,
+# subida do stack (backend + Postgres) e health check. É chamado por deploy.yml,
+# uma vez por ambiente, variando só os `inputs`.
 #
 # Os secrets são herdados do caller via `secrets: inherit`. Como o job declara
 # `environment: ${{ inputs.environment }}`, os secrets do environment correto
@@ -24,10 +25,6 @@ on:
         description: Diretório de deploy no host (ex. ~/backstage)
         required: true
         type: string
-      compose-override:
-        description: Arquivo de override do docker-compose (ex. docker-compose.prod.yml)
-        required: true
-        type: string
       image-tag:
         description: Tag da imagem Docker a construir (ex. backstage:latest)
         required: true
@@ -43,13 +40,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Enable Corepack (Yarn)
+        run: corepack enable || echo "corepack já habilitado no runner"
+
+      # Build do app no runner (gera packages/backend/dist/{skeleton,bundle}.tar.gz).
+      - name: Build backend bundle
+        working-directory: backstage-app
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          # Remove yarnPath (release não versionado); corepack usa packageManager.
+          sed -i '/yarnPath/d' .yarnrc.yml
+          yarn install --immutable
+          yarn tsc
+          yarn build:backend
+
+      # Imagem usa o deploy/Dockerfile (host-build) com contexto = backstage-app.
       - name: Build image
-        run: docker build -t "${{ inputs.image-tag }}" .
+        run: docker build backstage-app -f deploy/Dockerfile -t "${{ inputs.image-tag }}"
 
       - name: Write .env
-        # Secrets do repositório/environment expostos como variáveis de ambiente
-        # (sem o prefixo reservado GITHUB_) e gravados no .env com os nomes que a
-        # aplicação espera (GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH).
+        # Secrets do environment expostos como env (sem o prefixo reservado GITHUB_)
+        # e gravados no .env com os nomes que a aplicação/compose esperam.
         env:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
           GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
@@ -59,8 +71,9 @@ jobs:
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
-          mkdir -p ${{ inputs.deploy-dir }}
-          cat > ${{ inputs.deploy-dir }}/.env << ENVEOF
+          mkdir -p "${{ inputs.deploy-dir }}"
+          cat > "${{ inputs.deploy-dir }}/.env" << ENVEOF
+          IMAGE_TAG=${{ inputs.image-tag }}
           APP_BASE_URL=${APP_BASE_URL}
           GITHUB_TOKEN=${GHUB_TOKEN}
           GITHUB_OWNER=${GHUB_OWNER}
@@ -69,17 +82,28 @@ jobs:
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           ENVEOF
-          chmod 600 ${{ inputs.deploy-dir }}/.env
+          chmod 600 "${{ inputs.deploy-dir }}/.env"
 
       - name: Deploy stack
         run: |
-          cp docker-compose.yml            ${{ inputs.deploy-dir }}/docker-compose.yml
-          cp ${{ inputs.compose-override }} ${{ inputs.deploy-dir }}/docker-compose.override.yml
-          cd ${{ inputs.deploy-dir }}
+          cp deploy/docker-compose.yml     "${{ inputs.deploy-dir }}/docker-compose.yml"
+          cp deploy/app-config.deploy.yaml "${{ inputs.deploy-dir }}/app-config.deploy.yaml"
+          cd "${{ inputs.deploy-dir }}"
           docker compose up -d --remove-orphans
 
       - name: Health check
         run: |
-          sleep 8
-          cd ${{ inputs.deploy-dir }}
-          docker compose ps
+          cd "${{ inputs.deploy-dir }}"
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:7007/healthcheck >/dev/null 2>&1 \
+               || curl -fsS http://localhost:7007 >/dev/null 2>&1; then
+              echo "✅ Backstage UP"
+              docker compose ps
+              exit 0
+            fi
+            echo "aguardando backstage subir... ($i/30)"
+            sleep 5
+          done
+          echo "❌ Health check falhou — últimos logs:"
+          docker compose logs --tail=120 backstage
+          exit 1

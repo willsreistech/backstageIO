@@ -15,7 +15,6 @@ on:
 #
 #   • environment / runner  → apontam pro environment e runner self-hosted certos
 #   • deploy-dir            → diretório no host onde o stack sobe
-#   • compose-override      → overlay do docker-compose por ambiente
 #   • image-tag             → tag da imagem construída
 
 jobs:
@@ -30,7 +29,6 @@ jobs:
       environment: development
       runner: development
       deploy-dir: ~/backstage-dev
-      compose-override: docker-compose.dev.yml
       image-tag: backstage:development
 
   # ── quality: release/* ────────────────────────────────────────────────────
@@ -43,7 +41,6 @@ jobs:
       environment: quality
       runner: quality
       deploy-dir: ~/backstage-qa
-      compose-override: docker-compose.qa.yml
       image-tag: backstage:quality
 
   # ── production: main ──────────────────────────────────────────────────────
@@ -56,5 +53,4 @@ jobs:
       environment: production
       runner: production
       deploy-dir: ~/backstage
-      compose-override: docker-compose.prod.yml
       image-tag: backstage:latest
