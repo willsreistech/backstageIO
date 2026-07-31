@@ -1,0 +1,45 @@
+services:
+  backstage:
+    image: backstage:latest       # gerada por `yarn build-image` (tag: backstage)
+    container_name: backstage
+    restart: unless-stopped
+    ports:
+      - "7007:7007"
+    environment:
+      # >>> TROQUE pelo IP/host que o navegador vai acessar (NAO use localhost se
+      #     for acessar de outra máquina). Ex.: http://192.168.1.10:7007
+      APP_BASE_URL: http://192.168.56.10:7007
+
+      # Postgres (serviço abaixo)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+
+      # GitHub (integrations + file-upload + TechDocs lendo o repo k9)
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_OWNER: ${GITHUB_OWNER:-willsreistech}
+      GITHUB_REPO: ${GITHUB_REPO:-k9}
+      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15
+    container_name: backstage-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: backstage
+      POSTGRES_PASSWORD: backstage
+      POSTGRES_DB: backstage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backstage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
