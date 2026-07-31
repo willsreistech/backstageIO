@@ -1,14 +1,20 @@
 name: Deploy (reusable)
 
 # ── Reusable workflow ─────────────────────────────────────────────────────────
-# Contém TODA a lógica de deploy: build do app no runner, build da imagem Docker
-# (com o gerador MkDocs/TechDocs embutido), geração do .env a partir dos secrets,
-# subida do stack (backend + Postgres) e health check. É chamado por deploy.yml,
-# uma vez por ambiente, variando só os `inputs`.
+# Contém TODA a lógica de deploy no modelo HÍBRIDO:
+#   1. Builda a imagem Docker AQUI no runner (que tem rede/registry liberados e
+#      embute o gerador MkDocs/TechDocs).
+#   2. Envia a imagem pronta para o servidor de deploy via SSH
+#      (`docker save | ssh docker load`) — contorna o FortiGate, que bloqueia
+#      `docker pull` no servidor.
+#   3. Copia docker-compose.yml + app-config.deploy.yaml + .env (gerado dos
+#      secrets) para o servidor e sobe o stack lá (`docker compose up -d`).
+#   4. Health check remoto.
 #
-# Os secrets são herdados do caller via `secrets: inherit`. Como o job declara
-# `environment: ${{ inputs.environment }}`, os secrets do environment correto
-# ficam disponíveis automaticamente.
+# Pré-requisitos no runner: docker + uma chave SSH (~/.ssh/id_ed25519) autorizada
+# no usuário de deploy do servidor, e o servidor no known_hosts.
+# Pré-requisitos no servidor: docker (usuário no grupo docker) e a imagem base
+# `postgres:15` já carregada (também bloqueada pelo FortiGate → side-load 1x).
 
 on:
   workflow_call:
@@ -21,8 +27,16 @@ on:
         description: Label do runner self-hosted (development/quality/production)
         required: true
         type: string
+      ssh-host:
+        description: Host/IP do servidor de deploy (destino do SSH)
+        required: true
+        type: string
+      ssh-user:
+        description: Usuário SSH no servidor de deploy
+        required: true
+        type: string
       deploy-dir:
-        description: Diretório de deploy no host (ex. ~/backstage)
+        description: Diretório de deploy no servidor (ex. ~/backstage)
         required: true
         type: string
       image-tag:
@@ -36,28 +50,23 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.runner }}"]
     environment: ${{ inputs.environment }}
 
+    env:
+      SSH_TARGET: ${{ inputs.ssh-user }}@${{ inputs.ssh-host }}
+      SSH_OPTS: -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable Corepack (Yarn)
-        run: corepack enable || echo "corepack já habilitado no runner"
-
-      # Build do app no runner (gera packages/backend/dist/{skeleton,bundle}.tar.gz).
-      - name: Build backend bundle
-        working-directory: backstage-app
-        env:
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: |
-          # Remove yarnPath (release não versionado); corepack usa packageManager.
-          sed -i '/yarnPath/d' .yarnrc.yml
-          yarn install --immutable
-          yarn tsc
-          yarn build:backend
-
-      # Imagem usa o deploy/Dockerfile (host-build) com contexto = backstage-app.
+      # Build da imagem AQUI (multi-stage self-contained: não precisa Node no host).
       - name: Build image
-        run: docker build backstage-app -f deploy/Dockerfile -t "${{ inputs.image-tag }}"
+        run: DOCKER_BUILDKIT=1 docker build backstage-app -f deploy/Dockerfile -t "${{ inputs.image-tag }}"
+
+      # Envia a imagem pronta pro servidor (contorna o FortiGate no pull).
+      - name: Ship image to server
+        run: |
+          docker save "${{ inputs.image-tag }}" | gzip \
+            | ssh $SSH_OPTS "$SSH_TARGET" 'gunzip | docker load'
 
       - name: Write .env
         # Secrets do environment expostos como env (sem o prefixo reservado GITHUB_)
@@ -71,8 +80,7 @@ jobs:
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
-          mkdir -p "${{ inputs.deploy-dir }}"
-          cat > "${{ inputs.deploy-dir }}/.env" << ENVEOF
+          cat > .env << ENVEOF
           IMAGE_TAG=${{ inputs.image-tag }}
           APP_BASE_URL=${APP_BASE_URL}
           GITHUB_TOKEN=${GHUB_TOKEN}
@@ -82,28 +90,37 @@ jobs:
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           ENVEOF
-          chmod 600 "${{ inputs.deploy-dir }}/.env"
+          chmod 600 .env
 
-      - name: Deploy stack
+      - name: Copy stack files to server
         run: |
-          cp deploy/docker-compose.yml     "${{ inputs.deploy-dir }}/docker-compose.yml"
-          cp deploy/app-config.deploy.yaml "${{ inputs.deploy-dir }}/app-config.deploy.yaml"
-          cd "${{ inputs.deploy-dir }}"
-          docker compose up -d --remove-orphans
+          ssh $SSH_OPTS "$SSH_TARGET" "mkdir -p '${{ inputs.deploy-dir }}'"
+          scp $SSH_OPTS \
+            deploy/docker-compose.yml \
+            deploy/app-config.deploy.yaml \
+            .env \
+            "$SSH_TARGET:${{ inputs.deploy-dir }}/"
 
-      - name: Health check
+      - name: Deploy stack (remoto)
         run: |
+          ssh $SSH_OPTS "$SSH_TARGET" \
+            "cd '${{ inputs.deploy-dir }}' && docker compose up -d --remove-orphans"
+
+      - name: Health check (remoto)
+        run: |
+          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
           cd "${{ inputs.deploy-dir }}"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             if curl -fsS http://localhost:7007/healthcheck >/dev/null 2>&1 \
                || curl -fsS http://localhost:7007 >/dev/null 2>&1; then
               echo "✅ Backstage UP"
               docker compose ps
               exit 0
             fi
-            echo "aguardando backstage subir... ($i/30)"
+            echo "aguardando backstage subir... ($i/40)"
             sleep 5
           done
           echo "❌ Health check falhou — últimos logs:"
-          docker compose logs --tail=120 backstage
+          docker compose logs --tail=150 backstage
           exit 1
+          REMOTE
