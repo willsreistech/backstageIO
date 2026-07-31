@@ -11,6 +11,7 @@ services:
       - "${BACKSTAGE_PORT:-7007}:7007"
     environment:
       APP_BASE_URL: ${APP_BASE_URL}
+      NODE_OPTIONS: --tls-max-v1.2
       # Postgres (serviço abaixo, mesma rede do compose)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
