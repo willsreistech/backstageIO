@@ -11,6 +11,10 @@ services:
       - "${BACKSTAGE_PORT:-7007}:7007"
     environment:
       APP_BASE_URL: ${APP_BASE_URL}
+      # FortiGate (SSL-inspection) só intercepta TLS 1.3 e devolve cadeia
+      # incompleta; forçar TLS 1.2 passa direto (cert real do GitHub verificável),
+      # necessário p/ o catálogo/TechDocs do k9 lerem api.github.com de dentro do container.
+      NODE_OPTIONS: --tls-max-v1.2
       # Postgres (serviço abaixo, mesma rede do compose)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

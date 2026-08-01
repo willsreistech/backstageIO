@@ -8,6 +8,15 @@
 #
 # Este arquivo é montado read-only em /app/app-config.deploy.yaml pelo compose,
 # então não precisa entrar na imagem.
+
+# Deploy é HTTP puro (sem TLS na frente). Por padrão o Backstage/Helmet envia a
+# diretiva CSP `upgrade-insecure-requests`, que faz o navegador buscar TODOS os
+# assets em https:// — como não há HTTPS, o JS falha (ERR_SSL_PROTOCOL_ERROR) e
+# a página fica em branco. Desligar a diretiva resolve.
+backend:
+  csp:
+    upgrade-insecure-requests: false
+
 catalog:
   locations:
     # Dados de exemplo (paths relativos ao cwd do backend = /app)
