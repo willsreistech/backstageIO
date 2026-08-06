@@ -1,0 +1,99 @@
+name: TechDocs publish (reusable)
+
+# ── Reusable workflow: gera e publica TechDocs no CI ─────────────────────────
+# Arquitetura "builder externo": cada repositório com documentação chama este
+# workflow no push; ele roda `mkdocs` AQUI no runner e publica o HTML pronto no
+# MinIO (S3-compatible). O Backstage (techdocs.builder: external) só serve.
+#
+# Uso — em cada repo documentado (ex.: willsreistech/k9), criar
+# .github/workflows/techdocs.yml:
+#
+#   name: TechDocs
+#   on:
+#     push:
+#       branches: [main]
+#       paths: ['docs/**', 'mkdocs.yml', 'README.md', 'catalog-info.yaml']
+#   jobs:
+#     publish:
+#       uses: willsreistech/backstageIO/.github/workflows/techdocs-publish-reusable.yml@main
+#       secrets: inherit
+#       with:
+#         entity: default/component/k9   # namespace/kind/name do catalog-info
+#
+# Pré-requisitos no runner: node/python3+pip disponíveis e rota até o MinIO.
+# Secrets esperados (repo/org): MINIO_ROOT_USER, MINIO_ROOT_PASSWORD.
+
+on:
+  workflow_call:
+    inputs:
+      entity:
+        description: Ref da entidade no catálogo (namespace/kind/name)
+        required: true
+        type: string
+      runner:
+        description: Label do runner self-hosted com rota até o MinIO
+        required: false
+        type: string
+        default: development
+      minio-endpoint:
+        description: Endpoint S3 do MinIO acessível a partir do runner
+        required: false
+        type: string
+        default: http://192.168.56.10:9000
+      bucket:
+        description: Bucket S3 de destino
+        required: false
+        type: string
+        default: techdocs
+      source-dir:
+        description: Diretório do repo onde está o mkdocs.yml
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  publish:
+    name: TechDocs → ${{ inputs.entity }}
+    runs-on: [self-hosted, "${{ inputs.runner }}"]
+
+    env:
+      # FortiGate: intercepta só TLS 1.3 (cert Fortinet sem SAN); forçar 1.2
+      # deixa o Node (npx/techdocs-cli) sair pra internet. Inócuo fora dele.
+      NODE_OPTIONS: --tls-max-v1.2
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install MkDocs (TechDocs generator)
+        run: |
+          python3 -m pip install --user --upgrade mkdocs-techdocs-core
+          python3 -c "import techdocs_core"   # sanity check (módulo = techdocs_core)
+
+      - name: Generate docs
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          npx --yes @techdocs/cli generate \
+            --no-docker \
+            --source-dir '${{ inputs.source-dir }}' \
+            --output-dir ./techdocs-site
+
+      - name: Publish to MinIO (awsS3)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ROOT_USER }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          AWS_REGION: us-east-1
+        run: |
+          npx --yes @techdocs/cli publish \
+            --publisher-type awsS3 \
+            --storage-name '${{ inputs.bucket }}' \
+            --entity '${{ inputs.entity }}' \
+            --awsEndpoint '${{ inputs.minio-endpoint }}' \
+            --awsS3ForcePathStyle \
+            --directory ./techdocs-site

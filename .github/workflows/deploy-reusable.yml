@@ -68,6 +68,19 @@ jobs:
           docker save "${{ inputs.image-tag }}" | gzip \
             | ssh $SSH_OPTS "$SSH_TARGET" 'gunzip | docker load'
 
+      # MinIO (storage do TechDocs): o servidor não consegue `docker pull`
+      # (FortiGate), então o runner puxa e envia — só se ainda não existirem lá.
+      - name: Ship MinIO images to server (if missing)
+        run: |
+          for img in minio/minio:latest minio/mc:latest; do
+            if ssh $SSH_OPTS "$SSH_TARGET" "docker image inspect $img >/dev/null 2>&1"; then
+              echo "✔ $img já existe no servidor"
+            else
+              docker pull "$img"
+              docker save "$img" | gzip | ssh $SSH_OPTS "$SSH_TARGET" 'gunzip | docker load'
+            fi
+          done
+
       - name: Write .env
         # Secrets do environment expostos como env (sem o prefixo reservado GITHUB_)
         # e gravados no .env com os nomes que a aplicação/compose esperam.
@@ -79,6 +92,8 @@ jobs:
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MINIO_USER:        ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_PASSWORD:    ${{ secrets.MINIO_ROOT_PASSWORD }}
         run: |
           cat > .env << ENVEOF
           IMAGE_TAG=${{ inputs.image-tag }}
@@ -89,6 +104,8 @@ jobs:
           GITHUB_BRANCH=${GHUB_BRANCH}
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
+          MINIO_ROOT_PASSWORD=${MINIO_PASSWORD:-minioadmin}
           ENVEOF
           chmod 600 .env
 
