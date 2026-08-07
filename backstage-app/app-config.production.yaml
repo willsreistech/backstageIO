@@ -46,9 +46,8 @@ catalog:
       target: ./examples/org.yaml
       rules:
         - allow: [User, Group]
-    # ── k9 (TechDocs) ──
-    - type: url
-      target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml
+    # k9: catalog-info entra via discovery (catalog.providers.github) — não
+    # listar aqui para não duplicar a entidade.
 
 
 

@@ -130,6 +130,18 @@ catalog:
     pullRequestBranchName: backstage-integration
   rules:
     - allow: [Component, System, API, Resource, Location, Template]
+  # ── Discovery automático (GitHub) ──────────────────────────────────────────
+  # Varre todos os repositórios de GITHUB_OWNER e registra os que tiverem
+  # catalog-info.yaml na raiz. Repos novos entram no catálogo sozinhos —
+  # nenhum ajuste manual aqui ao adicionar repositórios.
+  providers:
+    github:
+      allRepos:
+        organization: ${GITHUB_OWNER}
+        catalogPath: /catalog-info.yaml
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
   locations:
     # Local example data, file locations are relative to the backend process, typically `packages/backend`
     - type: file
@@ -158,13 +170,11 @@ catalog:
     #     - allow: [User, Group]
 
     # ── K9 — Kind Kubernetes Lab ─────────────────────────────────────────────
-    # Component de infraestrutura Kind
-    - type: url
-      target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml
-      rules:
-        - allow: [Component, System]
+    # O catalog-info.yaml do k9 agora entra via discovery (catalog.providers.
+    # github) — não listar aqui para não duplicar a entidade.
 
     # Templates Scaffolder: criar / remover / status de clusters Kind
+    # (fora da raiz do repo, então a discovery NÃO encontra — mantém manual)
     - type: url
       target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
       rules:

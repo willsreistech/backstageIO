@@ -36,6 +36,11 @@ backend.add(
   import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
 );
 
+// GitHub discovery: varre a org/usuário (GITHUB_OWNER) e registra todo repo
+// que tiver catalog-info.yaml na raiz — sem precisar adicionar cada repo
+// manualmente em catalog.locations. Config: catalog.providers.github.
+backend.add(import('@backstage/plugin-catalog-backend-module-github'));
+
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 

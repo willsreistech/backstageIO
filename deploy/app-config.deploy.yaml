@@ -51,6 +51,11 @@ catalog:
       rules:
         - allow: [User, Group]
 
-    # ── k9 — Kind Kubernetes Lab (TechDocs) ──────────────────────────────────
+    # ── k9 — Kind Kubernetes Lab ─────────────────────────────────────────────
+    # catalog-info do k9 entra via discovery (catalog.providers.github na
+    # app-config.yaml base) — não listar aqui para não duplicar a entidade.
+    # Template Scaffolder (fora da raiz do repo → discovery não encontra):
     - type: url
-      target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml
+      target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
+      rules:
+        - allow: [Template]
