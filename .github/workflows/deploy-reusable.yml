@@ -94,6 +94,8 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           MINIO_USER:        ${{ secrets.MINIO_ROOT_USER }}
           MINIO_PASSWORD:    ${{ secrets.MINIO_ROOT_PASSWORD }}
+          KC_METADATA_URL:   ${{ secrets.KEYCLOAK_METADATA_URL }}
+          KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET }}
         run: |
           cat > .env << ENVEOF
           IMAGE_TAG=${{ inputs.image-tag }}
@@ -106,6 +108,9 @@ jobs:
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
           MINIO_ROOT_PASSWORD=${MINIO_PASSWORD:-minioadmin}
+          KEYCLOAK_METADATA_URL=${KC_METADATA_URL}
+          KEYCLOAK_CLIENT_ID=backstage
+          KEYCLOAK_CLIENT_SECRET=${KC_CLIENT_SECRET}
           ENVEOF
           chmod 600 .env
 

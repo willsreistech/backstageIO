@@ -17,6 +17,28 @@ backend:
   csp:
     upgrade-insecure-requests: false
 
+# ── Auth: Keycloak (OIDC) ────────────────────────────────────────────────────
+# Keycloak do lab roda no mesmo servidor (repo keycloakwsr, porta 8081).
+# Em prod real só muda KEYCLOAK_METADATA_URL (servidor dedicado).
+# Guest continua habilitado (herdado da app-config.production.yaml) para
+# fallback durante a transição.
+auth:
+  environment: production
+  providers:
+    oidc:
+      production:
+        metadataUrl: ${KEYCLOAK_METADATA_URL}
+        clientId: ${KEYCLOAK_CLIENT_ID}
+        clientSecret: ${KEYCLOAK_CLIENT_SECRET}
+        prompt: auto
+        signIn:
+          resolvers:
+            # Lab: aceita qualquer usuário do realm mesmo sem User entity no
+            # catálogo. Em prod: ingerir users/groups do Keycloak no catálogo
+            # (plugin catalog-backend-module-keycloak) e remover a flag.
+            - resolver: emailLocalPartMatchingUserEntityName
+              dangerouslyAllowSignInWithoutUserInCatalog: true
+
 # ── TechDocs: builder EXTERNO (arquitetura recomendada p/ muitos repos) ──────
 # O backend NÃO gera mais docs on-the-fly (nada de mkdocs/pip aqui): ele só
 # SERVE o HTML pronto que o CI de cada repositório publica no MinIO
