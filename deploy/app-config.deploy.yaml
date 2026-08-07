@@ -24,6 +24,11 @@ backend:
 # fallback durante a transição.
 auth:
   environment: production
+  # OBRIGATÓRIO p/ OIDC: o fluxo (openid-client/passport) usa sessão no
+  # backend — sem isso o /oidc/start falha com
+  # "authentication requires session support".
+  session:
+    secret: ${AUTH_SESSION_SECRET}
   providers:
     oidc:
       production:
@@ -38,6 +43,13 @@ auth:
             # (plugin catalog-backend-module-keycloak) e remover a flag.
             - resolver: emailLocalPartMatchingUserEntityName
               dangerouslyAllowSignInWithoutUserInCatalog: true
+
+# ── Catálogo: ingestão de Users/Groups do Keycloak ───────────────────────────
+# Sincroniza os usuários/grupos do realm `backstage` como entidades User/Group.
+# Lab: autentica com o admin (username/password). Em prod: usar um client com
+# service account + roles view-users/query-users e trocar por clientId/secret;
+# aí dá pra remover o dangerouslyAllowSignInWithoutUserInCatalog acima.
+# (config de catalog continua no bloco `catalog:` único, abaixo)
 
 # ── TechDocs: builder EXTERNO (arquitetura recomendada p/ muitos repos) ──────
 # O backend NÃO gera mais docs on-the-fly (nada de mkdocs/pip aqui): ele só
@@ -60,6 +72,21 @@ techdocs:
         secretAccessKey: ${TECHDOCS_S3_SECRET_KEY}
 
 catalog:
+  # Permite também User/Group (ingeridos do Keycloak). Listas são
+  # SUBSTITUÍDAS entre configs e esta é a última carregada — vence.
+  rules:
+    - allow: [Component, System, API, Resource, Location, Template, User, Group]
+  providers:
+    keycloakOrg:
+      default:
+        baseUrl: ${KEYCLOAK_BASE_URL}
+        loginRealm: master
+        realm: backstage
+        username: ${KEYCLOAK_ADMIN_USER}
+        password: ${KEYCLOAK_ADMIN_PASSWORD}
+        schedule:
+          frequency: { minutes: 5 }
+          timeout: { minutes: 3 }
   locations:
     # Dados de exemplo (paths relativos ao cwd do backend = /app)
     - type: file

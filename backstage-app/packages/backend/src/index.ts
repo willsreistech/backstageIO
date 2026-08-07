@@ -43,6 +43,12 @@ backend.add(
 // manualmente em catalog.locations. Config: catalog.providers.github.
 backend.add(import('@backstage/plugin-catalog-backend-module-github'));
 
+// Keycloak org: ingere Users/Groups do realm no catálogo.
+// Config: catalog.providers.keycloakOrg (app-config.deploy.yaml).
+backend.add(
+  import('@backstage-community/plugin-catalog-backend-module-keycloak'),
+);
+
 // See https://backstage.io/docs/features/software-catalog/configuration#subscribing-to-catalog-errors
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
 

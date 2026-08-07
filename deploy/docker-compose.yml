@@ -34,6 +34,12 @@ services:
       KEYCLOAK_METADATA_URL: ${KEYCLOAK_METADATA_URL}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-backstage}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      # Sessão do backend (exigida pelo fluxo OIDC)
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      # Ingestão de Users/Groups do Keycloak no catálogo
+      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       # Config extra (readiciona o catálogo do k9, que a app-config.production
       # sobrescreveria). Montada read-only.
