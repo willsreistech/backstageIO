@@ -18,8 +18,11 @@ backend:
     upgrade-insecure-requests: false
 
 # ── Auth: Keycloak (OIDC) ────────────────────────────────────────────────────
-# Keycloak do lab roda no mesmo servidor (repo keycloakwsr, porta 8081).
-# Em prod real só muda KEYCLOAK_METADATA_URL (servidor dedicado).
+# Keycloak do lab roda em um compose separado, ligado à rede Docker
+# `backstage-auth`. O hostname público continua sendo usado pelo navegador;
+# o metadataUrl abaixo é obtido pela rota interna do backend.
+# Em prod real, defina KEYCLOAK_INTERNAL_METADATA_URL/BASE_URL para o endpoint
+# interno do Keycloak dedicado.
 # Guest continua habilitado (herdado da app-config.production.yaml) para
 # fallback durante a transição.
 auth:

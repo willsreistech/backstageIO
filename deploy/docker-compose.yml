@@ -30,16 +30,20 @@ services:
       # (workflow techdocs-publish-reusable.yml).
       TECHDOCS_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       TECHDOCS_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      # Auth OIDC (Keycloak — repo keycloakwsr, mesmo servidor no lab)
-      KEYCLOAK_METADATA_URL: ${KEYCLOAK_METADATA_URL}
+      # Auth OIDC: o backend usa a rede compartilhada; Keycloak mantém a URL
+      # pública para o navegador e anuncia endpoints de backchannel internos.
+      KEYCLOAK_METADATA_URL: "${KEYCLOAK_INTERNAL_METADATA_URL:-http://keycloak:8080/realms/backstage/.well-known/openid-configuration}"
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-backstage}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       # Sessão do backend (exigida pelo fluxo OIDC)
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
       # Ingestão de Users/Groups do Keycloak no catálogo
-      KEYCLOAK_BASE_URL: ${KEYCLOAK_BASE_URL}
+      KEYCLOAK_BASE_URL: "${KEYCLOAK_INTERNAL_BASE_URL:-http://keycloak:8080}"
       KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    networks:
+      - default
+      - backstage-auth
     volumes:
       # Config extra (readiciona o catálogo do k9, que a app-config.production
       # sobrescreveria). Montada read-only.
@@ -118,3 +122,8 @@ services:
 volumes:
   pgdata:
   miniodata:
+
+networks:
+  backstage-auth:
+    name: backstage-auth
+    external: true
