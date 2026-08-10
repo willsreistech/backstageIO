@@ -38,8 +38,9 @@ ENV PYTHON=/usr/bin/python3
 
 # Deps nativas (isolate-vm) + sqlite + MkDocs (TechDocs).
 # --break-system-packages exigido pelo Debian bookworm (PEP 668).
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && \
+    apt-get -o Acquire::Retries=5 update && \
+    apt-get -o Acquire::Retries=5 install -y --fix-missing --no-install-recommends \
         python3 python3-pip g++ build-essential libsqlite3-dev && \
     pip3 install --no-cache-dir --break-system-packages mkdocs-techdocs-core && \
     rm -rf /var/lib/apt/lists/*
