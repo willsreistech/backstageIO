@@ -1,4 +1,4 @@
-# Integração com o Backstage (willsreis/backstageIO)
+# Integração com o Backstage (willsreistech/backstageIO)
 
 Este diretório contém os arquivos necessários para integrar o **k9** ao Backstage.
 
@@ -13,28 +13,47 @@ Este diretório contém os arquivos necessários para integrar o **k9** ao Backs
 
 ## 🔧 Como aplicar a integração
 
-### 1. Garantir que o token GitHub tem permissão de `workflow`
+### 1. Configurar o GitHub App
 
-O `GITHUB_TOKEN` configurado no Backstage precisa do scope **`workflow`** para disparar GitHub Actions:
+Crie um GitHub App dedicado ao Backstage e instale-o somente em
+`willsreistech/k9`. Conceda:
 
-1. Acesse https://github.com/settings/tokens
-2. Edite o token usado no `GITHUB_TOKEN` do backstageIO
-3. Marque o scope **`workflow`** (necessário para `github:actions:dispatch`)
+- `Actions: Read and write` para disparar workflows;
+- `Contents: Read` para catálogo e leitura de arquivos;
+- `Contents: Write` somente se o plugin de upload for utilizado.
+
+Adicione estes secrets ao Environment `production` do `backstageIO`:
+
+```text
+BACKSTAGE_GH_APP_ID
+BACKSTAGE_GH_APP_CLIENT_ID
+BACKSTAGE_GH_APP_CLIENT_SECRET
+BACKSTAGE_GH_APP_PRIVATE_KEY_B64
+```
+
+Gere o último valor com:
+
+```bash
+base64 -w0 app.private-key.pem
+```
+
+O deploy decodifica a chave somente dentro do container. Depois de criar ou
+alterar o App, execute o deploy do Backstage para carregar as credenciais.
 
 ### 2. Atualizar `app-config.yaml` no backstageIO
 
-Abra `willsreis/backstageIO/app-config.yaml` e adicione as localizações abaixo dentro de `catalog.locations`:
+Abra `willsreistech/backstageIO/app-config.yaml` e adicione as localizações abaixo dentro de `catalog.locations`:
 
 ```yaml
 # K9 — Kind Kubernetes Lab: componente de infraestrutura
 - type: url
-  target: https://github.com/willsreis/k9/blob/main/catalog-info.yaml
+  target: https://github.com/willsreistech/k9/blob/main/catalog-info.yaml
   rules:
     - allow: [Component, System]
 
 # K9 — Kind Kubernetes Lab: templates criar/remover cluster
 - type: url
-  target: https://github.com/willsreis/k9/blob/main/backstage/create-cluster-template.yaml
+  target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
   rules:
     - allow: [Template]
 ```
@@ -70,7 +89,7 @@ Após reiniciar o Backstage você terá:
 Backstage UI
   └─ Template "Criar Cluster Kind"
        └─ github:actions:dispatch
-            └─ willsreis/k9 → setup-cluster.yml
+            └─ willsreistech/k9 → setup-cluster.yml
                  └─ self-hosted runner no servidor
                       └─ scripts/setup-cluster.sh
                            └─ kind create cluster

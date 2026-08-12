@@ -17,7 +17,7 @@
 8. [Variáveis de Ambiente](#8-variáveis-de-ambiente)
 9. [Configuração do app-config.yaml](#9-configuração-do-app-configyaml)
 10. [Como Executar](#10-como-executar)
-11. [Permissões do GitHub Token](#11-permissões-do-github-token)
+11. [Permissões do GitHub App](#11-permissões-do-github-app)
 12. [Git LFS — Configuração no Repositório](#12-git-lfs--configuração-no-repositório)
 13. [Funcionalidades Implementadas](#13-funcionalidades-implementadas)
 14. [Endpoints da API](#14-endpoints-da-api)
@@ -136,8 +136,11 @@ yarn install
 
 ```bash
 cat > .env << 'EOF'
-GITHUB_TOKEN=github_pat_SEU_TOKEN_AQUI
-GITHUB_OWNER=seu_usuario_github
+BACKSTAGE_GH_APP_ID=123456
+BACKSTAGE_GH_APP_CLIENT_ID=Iv1_SEU_CLIENT_ID
+BACKSTAGE_GH_APP_CLIENT_SECRET=SEU_CLIENT_SECRET
+BACKSTAGE_GH_APP_PRIVATE_KEY_B64=CHAVE_PRIVADA_BASE64
+GITHUB_OWNER=willsreistech
 GITHUB_REPO=nome_do_repo
 GITHUB_BRANCH=main
 EOF
@@ -253,6 +256,12 @@ export const fileUploadPlugin = createBackendPlugin({
 ```typescript
 import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  DefaultGithubCredentialsProvider,
+  GithubCredentials,
+  GithubCredentialsProvider,
+  ScmIntegrations,
+} from '@backstage/integration';
 import express, { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -308,17 +317,26 @@ export interface RouterOptions {
 
 // ── GitHub config helper ──────────────────────────────────────────────────────
 function getGitHubConfig(config: Config) {
-  let token: string;
-  try {
-    token = config.getString('fileUpload.github.token');
-  } catch {
-    token = config.getConfigArray('integrations.github')[0].getString('token');
-  }
+  const integrations = ScmIntegrations.fromConfig(config);
   const owner     = config.getString('fileUpload.github.owner');
   const repo      = config.getString('fileUpload.github.repo');
   const branch    = config.getOptionalString('fileUpload.github.branch') ?? 'main';
   const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? 'uploads';
-  return { token, owner, repo, branch, targetDir };
+  const credentialsProvider = DefaultGithubCredentialsProvider.fromIntegrations(integrations);
+  return { owner, repo, branch, targetDir, credentialsProvider };
+}
+
+async function getGitHubCredentials(
+  config: ReturnType<typeof getGitHubConfig>,
+  repo = config.repo,
+): Promise<GithubCredentials> {
+  const credentials = await config.credentialsProvider.getCredentials({
+    url: `https://github.com/${config.owner}/${repo}`,
+  });
+  if (!credentials.token) {
+    throw new Error(`No GitHub credentials available for ${config.owner}/${repo}`);
+  }
+  return credentials;
 }
 
 /** Returns true when the file should be pushed via Git LFS. */
@@ -359,8 +377,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // ── GET /repos ─────────────────────────────────────────────────────────────
   router.get('/repos', async (_req: Request, res: Response) => {
     try {
-      const { token, owner } = getGitHubConfig(config);
-      const octokit = new Octokit({ auth: token });
+      const cfg = getGitHubConfig(config);
+      const { owner } = cfg;
+      const credentials = await getGitHubCredentials(cfg);
+      const octokit = new Octokit({ auth: credentials.token });
 
       const allPages = await octokit.paginate(octokit.repos.listForAuthenticatedUser, {
         per_page: 100,
@@ -401,8 +421,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg        = getGitHubConfig(config);
       const repo       = (req.body?.repo as string) || cfg.repo;
-      const { token, owner, branch } = cfg;
-      const octokit    = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit    = new Octokit({ auth: credentials.token });
 
       const uploadPath = (req.body?.uploadPath as string) ?? '';
       const safeName   = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -427,9 +448,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           {
             method: 'POST',
             headers: {
+              ...credentials.headers,
               'Content-Type':  'application/vnd.git-lfs+json',
               'Accept':        'application/vnd.git-lfs+json',
-              'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
               operation: 'upload',
@@ -520,8 +541,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const cfg     = getGitHubConfig(config);
       const repo    = (req.query.repo as string) || cfg.repo;
       const dirPath = (req.query.path as string) ?? '';
-      const { token, owner, branch } = cfg;
-      const octokit = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit = new Octokit({ auth: credentials.token });
 
       let items: object[] = [];
       try {
@@ -564,8 +586,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg    = getGitHubConfig(config);
       const repo   = (req.query.repo as string) || cfg.repo;
-      const { token, owner, branch } = cfg;
-      const octokit = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit = new Octokit({ auth: credentials.token });
 
       const existing = await octokit.repos.getContent({ owner, repo, path: filePath, ref: branch });
       if (Array.isArray(existing.data) || !existing.data.sha) {
@@ -813,7 +836,6 @@ export default createApp({
 # ── File Upload Plugin ────────────────────────────────────────────────────────
 fileUpload:
   github:
-    token: ${GITHUB_TOKEN}    # Token GitHub (Fine-grained ou Classic PAT)
     owner: ${GITHUB_OWNER}    # Usuário ou organização GitHub
     repo:  ${GITHUB_REPO}     # Nome do repositório padrão
     branch: ${GITHUB_BRANCH}  # Branch alvo (padrão: main)
@@ -837,8 +859,11 @@ fileUpload:
 ### `.env` (criado na raiz do projeto)
 
 ```bash
-GITHUB_TOKEN=github_pat_SEU_TOKEN_AQUI
-GITHUB_OWNER=seu_usuario_github
+BACKSTAGE_GH_APP_ID=123456
+BACKSTAGE_GH_APP_CLIENT_ID=Iv1_SEU_CLIENT_ID
+BACKSTAGE_GH_APP_CLIENT_SECRET=SEU_CLIENT_SECRET
+BACKSTAGE_GH_APP_PRIVATE_KEY_B64=CHAVE_PRIVADA_BASE64
+GITHUB_OWNER=willsreistech
 GITHUB_REPO=nome_do_repositorio_padrao
 GITHUB_BRANCH=main
 ```
@@ -846,8 +871,11 @@ GITHUB_BRANCH=main
 ### `.env.example` (template para outros devs)
 
 ```bash
-GITHUB_TOKEN=          # Fine-grained PAT ou Classic PAT
-GITHUB_OWNER=          # Usuário ou organização
+BACKSTAGE_GH_APP_ID=         # ID do GitHub App
+BACKSTAGE_GH_APP_CLIENT_ID=  # Client ID do GitHub App
+BACKSTAGE_GH_APP_CLIENT_SECRET= # Client secret do GitHub App
+BACKSTAGE_GH_APP_PRIVATE_KEY_B64= # Chave privada PEM em Base64
+GITHUB_OWNER=willsreistech
 GITHUB_REPO=           # Repositório padrão
 GITHUB_BRANCH=main     # Branch (padrão: main)
 ```
@@ -866,7 +894,10 @@ A configuração completa relevante para o plugin está descrita na seção [7 �
 
 | Chave | Tipo | Descrição |
 |---|---|---|
-| `fileUpload.github.token` | string | Token GitHub para autenticação na API |
+| `BACKSTAGE_GH_APP_ID` | string | ID do GitHub App |
+| `BACKSTAGE_GH_APP_CLIENT_ID` | string | Client ID do GitHub App |
+| `BACKSTAGE_GH_APP_CLIENT_SECRET` | string | Client secret do GitHub App |
+| `BACKSTAGE_GH_APP_PRIVATE_KEY_B64` | string | Chave privada PEM em Base64 |
 | `fileUpload.github.owner` | string | Dono dos repositórios (user/org) |
 | `fileUpload.github.repo` | string | Repo padrão (fallback quando nenhum selecionado) |
 | `fileUpload.github.branch` | string | Branch alvo para commits |
@@ -901,14 +932,16 @@ O plugin aparece no menu lateral como **"File Upload"**.
 
 ---
 
-## 11. Permissões do GitHub Token
+## 11. Permissões do GitHub App
 
-### Permissões mínimas necessárias (Fine-grained PAT)
+### Permissões mínimas necessárias
 
 | Permissão | Nível | Motivo |
 |---|---|---|
-| **Metadata** | Read | Obrigatória pelo GitHub em todo fine-grained PAT |
-| **Contents** (Code) | Read and Write | Listar, navegar, fazer upload, deletar e usar LFS |
+| **Metadata** | Read | Acesso básico ao repositório |
+| **Contents** (Code) | Read | Listar e navegar pelos arquivos |
+| **Contents** (Code) | Write | Upload, exclusão e uso de Git LFS |
+| **Actions** | Read and Write | Disparar workflows pelo Scaffolder |
 
 ### Por que cada operação precisa de Contents R/W
 
@@ -921,15 +954,16 @@ O plugin aparece no menu lateral como **"File Upload"**.
 | Commit do LFS pointer | `repos.createOrUpdateFileContents` | Contents (write) |
 | Deletar arquivo | `repos.deleteFile` | Contents (write) |
 
-### Criar um Fine-grained PAT correto
+### Criar e instalar o GitHub App
 
-1. Acesse: **https://github.com/settings/tokens?type=beta**
-2. Clique em **"Generate new token"**
-3. Em **Repository access** → selecione os repositórios desejados
-4. Em **Repository permissions**:
-   - **Metadata** → `Read-only`
-   - **Contents** → `Read and write`
-5. Copie o token e coloque no `.env`
+1. Crie um App dedicado ao Backstage.
+2. Em **Repository access**, selecione apenas os repositórios necessários.
+3. Conceda as permissões acima.
+4. Gere a chave privada e codifique-a com:
+
+   ```bash
+   base64 -w0 app.private-key.pem
+   ```
 
 ---
 

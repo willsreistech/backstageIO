@@ -61,10 +61,13 @@ jobs:
       - name: Validate deployment secrets
         env:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
-          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
+          BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
+          BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
+          BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
+          BACKSTAGE_GH_APP_PRIVATE_KEY_B64: ${{ secrets.BACKSTAGE_GH_APP_PRIVATE_KEY_B64 }}
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
@@ -74,13 +77,16 @@ jobs:
           KC_INTERNAL_BASE_URL:     ${{ secrets.KEYCLOAK_INTERNAL_BASE_URL }}
         run: |
           missing=0
-          for name in APP_BASE_URL GHUB_TOKEN GHUB_OWNER GHUB_REPO GHUB_BRANCH POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_ADMIN_PASSWORD SESSION_SECRET; do
+          for name in APP_BASE_URL GHUB_OWNER GHUB_REPO GHUB_BRANCH BACKSTAGE_GH_APP_ID BACKSTAGE_GH_APP_CLIENT_ID BACKSTAGE_GH_APP_CLIENT_SECRET BACKSTAGE_GH_APP_PRIVATE_KEY_B64 POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_ADMIN_PASSWORD SESSION_SECRET; do
             case "$name" in
               APP_BASE_URL) value="$APP_BASE_URL" ;;
-              GHUB_TOKEN) value="$GHUB_TOKEN" ;;
               GHUB_OWNER) value="$GHUB_OWNER" ;;
               GHUB_REPO) value="$GHUB_REPO" ;;
               GHUB_BRANCH) value="$GHUB_BRANCH" ;;
+              BACKSTAGE_GH_APP_ID) value="$BACKSTAGE_GH_APP_ID" ;;
+              BACKSTAGE_GH_APP_CLIENT_ID) value="$BACKSTAGE_GH_APP_CLIENT_ID" ;;
+              BACKSTAGE_GH_APP_CLIENT_SECRET) value="$BACKSTAGE_GH_APP_CLIENT_SECRET" ;;
+              BACKSTAGE_GH_APP_PRIVATE_KEY_B64) value="$BACKSTAGE_GH_APP_PRIVATE_KEY_B64" ;;
               POSTGRES_USER) value="$POSTGRES_USER" ;;
               POSTGRES_PASSWORD) value="$POSTGRES_PASSWORD" ;;
               KC_CLIENT_SECRET) value="$KC_CLIENT_SECRET" ;;
@@ -132,10 +138,13 @@ jobs:
         # e gravados no .env com os nomes que a aplicação/compose esperam.
         env:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
-          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
+          BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
+          BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
+          BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
+          BACKSTAGE_GH_APP_PRIVATE_KEY_B64: ${{ secrets.BACKSTAGE_GH_APP_PRIVATE_KEY_B64 }}
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           MINIO_USER:        ${{ secrets.MINIO_ROOT_USER }}
@@ -153,10 +162,13 @@ jobs:
           cat > .env << ENVEOF
           IMAGE_TAG=${{ inputs.image-tag }}
           APP_BASE_URL=${APP_BASE_URL}
-          GITHUB_TOKEN=${GHUB_TOKEN}
           GITHUB_OWNER=${GHUB_OWNER}
           GITHUB_REPO=${GHUB_REPO}
           GITHUB_BRANCH=${GHUB_BRANCH}
+          BACKSTAGE_GH_APP_ID=${BACKSTAGE_GH_APP_ID}
+          BACKSTAGE_GH_APP_CLIENT_ID=${BACKSTAGE_GH_APP_CLIENT_ID}
+          BACKSTAGE_GH_APP_CLIENT_SECRET=${BACKSTAGE_GH_APP_CLIENT_SECRET}
+          BACKSTAGE_GH_APP_PRIVATE_KEY_B64=${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           MINIO_ROOT_USER=${MINIO_USER:-minioadmin}

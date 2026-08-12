@@ -22,8 +22,12 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      # GitHub (integrations + file-upload + TechDocs lendo o repo k9)
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      # GitHub App (catalog, Scaffolder Actions dispatch, and file uploads).
+      BACKSTAGE_GH_APP_ID: ${BACKSTAGE_GH_APP_ID}
+      BACKSTAGE_GH_APP_CLIENT_ID: ${BACKSTAGE_GH_APP_CLIENT_ID}
+      BACKSTAGE_GH_APP_CLIENT_SECRET: ${BACKSTAGE_GH_APP_CLIENT_SECRET}
+      BACKSTAGE_GH_APP_PRIVATE_KEY: ${BACKSTAGE_GH_APP_PRIVATE_KEY:-}
+      BACKSTAGE_GH_APP_PRIVATE_KEY_B64: ${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}
       GITHUB_OWNER: ${GITHUB_OWNER:-willsreistech}
       GITHUB_REPO: ${GITHUB_REPO:-k9}
       GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
@@ -55,6 +59,13 @@ services:
       - -c
       - |
           set -eu
+          if [ -n "$${BACKSTAGE_GH_APP_PRIVATE_KEY_B64:-}" ]; then
+            if ! decoded_key="$$(printf '%s' "$${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}" | base64 -d)"; then
+              echo "Invalid GitHub App private key encoding" >&2
+              exit 1
+            fi
+            export BACKSTAGE_GH_APP_PRIVATE_KEY="$$decoded_key"
+          fi
           for attempt in $$(seq 1 60); do
             if node -e "fetch(process.env.KEYCLOAK_METADATA_URL).then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"; then
               break

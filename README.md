@@ -121,11 +121,17 @@ cp .env.example .env
 Edite `.env` com seus dados:
 
 ```env
-# GitHub Personal Access Token (escopos necessários: repo)
-GITHUB_TOKEN=ghp_SeuTokenAqui
+# GitHub App (instalado no repositório de destino)
+BACKSTAGE_GH_APP_ID=123456
+BACKSTAGE_GH_APP_CLIENT_ID=Iv1_SeuClientId
+BACKSTAGE_GH_APP_CLIENT_SECRET=SeuClientSecret
+# Para `yarn start` local, use o PEM com separadores literais `\n`.
+BACKSTAGE_GH_APP_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nSuaChave\n-----END PRIVATE KEY-----
+# Para o deploy, use o valor gerado por `base64 -w0 app.private-key.pem`.
+BACKSTAGE_GH_APP_PRIVATE_KEY_B64=ChavePrivadaEmBase64
 
-# Dono do repositório (usuário ou organização)
-GITHUB_OWNER=seu-usuario-github
+# Dono do repositório (organização onde o App foi instalado)
+GITHUB_OWNER=willsreistech
 
 # Nome do repositório de destino (deve existir)
 GITHUB_REPO=nome-do-repositorio
@@ -138,7 +144,10 @@ GITHUB_BRANCH=main
 
 O `yarn start` já carrega o `.env` automaticamente (via `dotenv-cli`), então **não é mais necessário** rodar `export ...` manualmente a cada sessão. O `app-config.yaml` interpola as variáveis via `${VARIAVEL}`.
 
-> Variáveis já exportadas no shell têm precedência sobre o `.env`. Assim, se preferir, você ainda pode sobrescrever pontualmente com `GITHUB_TOKEN=ghp_xxx yarn start`.
+> O deploy decodifica `BACKSTAGE_GH_APP_PRIVATE_KEY_B64` antes de iniciar o backend. O
+> App deve ter `Contents: Read` e `Actions: Read and write`; use
+> `Contents: Write` somente se o plugin de upload precisar gravar no
+> repositório.
 
 ---
 
@@ -386,7 +395,6 @@ Adicionada a seção `fileUpload`:
 ```yaml
 fileUpload:
   github:
-    token: ${GITHUB_TOKEN}
     owner: ${GITHUB_OWNER}
     repo: ${GITHUB_REPO}
     branch: ${GITHUB_BRANCH}
@@ -407,7 +415,7 @@ fileUpload:
    a. multer intercepta o upload e salva em ~/data/uploads/<timestamp>-<nome>
    b. Lê o arquivo do disco como Buffer
    c. Converte para Base64
-   d. Cria Octokit com GITHUB_TOKEN
+   d. Solicita um token de instalação curto do GitHub App
    e. Verifica se o arquivo já existe no repo (para obter o sha)
    f. Chama octokit.repos.createOrUpdateFileContents()
    g. Retorna JSON com localPath e URL do GitHub
@@ -420,7 +428,10 @@ fileUpload:
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
-| `GITHUB_TOKEN` | ✅ | PAT do GitHub (escopo: `repo`) |
+| `BACKSTAGE_GH_APP_ID` | ✅ | ID numérico do GitHub App |
+| `BACKSTAGE_GH_APP_CLIENT_ID` | ✅ | Client ID do GitHub App |
+| `BACKSTAGE_GH_APP_CLIENT_SECRET` | ✅ | Client secret do GitHub App |
+| `BACKSTAGE_GH_APP_PRIVATE_KEY_B64` | ✅ | Chave privada PEM codificada em Base64 |
 | `GITHUB_OWNER` | ✅ | Usuário ou organização donos do repo |
 | `GITHUB_REPO` | ✅ | Nome do repositório de destino |
 | `GITHUB_BRANCH` | ✅ | Branch de destino (ex: `main`) |
@@ -437,9 +448,13 @@ fileUpload:
 
 ---
 
-## Como Gerar o Token PAT
+## Como Configurar o GitHub App
 
-1. Acesse https://github.com/settings/tokens
-2. Clique em **"Generate new token (classic)"**
-3. Selecione o escopo **`repo`** (acesso completo ao repositório)
-4. Copie o token gerado e cole em `GITHUB_TOKEN` no `.env`
+1. Crie um GitHub App dedicado ao Backstage.
+2. Instale-o somente nos repositórios necessários.
+3. Conceda `Actions: Read and write` e `Contents: Read`.
+4. Gere a chave privada e codifique-a com:
+
+   ```bash
+   base64 -w0 app.private-key.pem
+   ```

@@ -56,15 +56,20 @@ backend:
 integrations:
   github:
     - host: github.com
-      # This is a Personal Access Token or PAT from GitHub. You can find out how to generate this token, and more information
-      # about setting up the GitHub integration here: https://backstage.io/docs/integrations/github/locations#configuration
-      token: ${GITHUB_TOKEN}
+      # GitHub App credentials issue short-lived installation tokens. The App
+      # should be installed only on the repositories Backstage must access.
+      apps:
+        - appId: ${BACKSTAGE_GH_APP_ID}
+          clientId: ${BACKSTAGE_GH_APP_CLIENT_ID}
+          clientSecret: ${BACKSTAGE_GH_APP_CLIENT_SECRET}
+          privateKey: ${BACKSTAGE_GH_APP_PRIVATE_KEY}
+          allowedInstallationOwners:
+            - willsreistech
 
 # ── File Upload Plugin ─────────────────────────────────────────────────────
 # Configure the binary upload & GitHub push behaviour.
 fileUpload:
   github:
-    token: ${GITHUB_TOKEN}   # Dedicated token for file-upload plugin (mirrors integrations.github.token)
     owner: ${GITHUB_OWNER}   # GitHub user or organization name
     repo: ${GITHUB_REPO}     # Repository name (must exist)
     branch: ${GITHUB_BRANCH} # Branch to push to (default: main)

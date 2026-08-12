@@ -1,5 +1,11 @@
 import { Config } from '@backstage/config';
 import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  DefaultGithubCredentialsProvider,
+  GithubCredentials,
+  GithubCredentialsProvider,
+  ScmIntegrations,
+} from '@backstage/integration';
 import express, { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -60,18 +66,39 @@ export interface RouterOptions {
  *   - Pushes the file to GitHub via the Contents API
  */
 // ── GitHub config helper ─────────────────────────────────────────────────────
-function getGitHubConfig(config: Config) {
-  let token: string;
-  try {
-    token = config.getString('fileUpload.github.token');
-  } catch {
-    token = config.getConfigArray('integrations.github')[0].getString('token');
-  }
+interface GitHubConfig {
+  owner: string;
+  repo: string;
+  branch: string;
+  targetDir: string;
+  credentialsProvider: GithubCredentialsProvider;
+}
+
+function getGitHubConfig(config: Config): GitHubConfig {
+  const integrations = ScmIntegrations.fromConfig(config);
   const owner     = config.getString('fileUpload.github.owner');
   const repo      = config.getString('fileUpload.github.repo');
   const branch    = config.getOptionalString('fileUpload.github.branch') ?? 'main';
   const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? 'uploads';
-  return { token, owner, repo, branch, targetDir };
+  const credentialsProvider = DefaultGithubCredentialsProvider.fromIntegrations(integrations);
+  return { owner, repo, branch, targetDir, credentialsProvider };
+}
+
+async function getGitHubCredentials(
+  config: GitHubConfig,
+  repo = config.repo,
+): Promise<GithubCredentials> {
+  const credentials = await config.credentialsProvider.getCredentials({
+    url: `https://github.com/${config.owner}/${repo}`,
+  });
+  if (!credentials.token) {
+    throw new Error(`No GitHub credentials available for ${config.owner}/${repo}`);
+  }
+  return credentials;
+}
+
+function getGitHubAuthHeaders(credentials: GithubCredentials): Record<string, string> {
+  return credentials.headers ?? { Authorization: `Bearer ${credentials.token}` };
 }
 
 /** Returns true when the file should be pushed via Git LFS. */
@@ -113,16 +140,27 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // ── GET /repos ────────────────────────────────────────────────────────────
   router.get('/repos', async (_req: Request, res: Response) => {
     try {
-      const { token, owner } = getGitHubConfig(config);
-      const octokit = new Octokit({ auth: token });
+      const cfg = getGitHubConfig(config);
+      const { owner } = cfg;
+      const credentials = await getGitHubCredentials(cfg);
+      const octokit = new Octokit({ auth: credentials.token });
 
-      // listForAuthenticatedUser returns ONLY repos the token actually has access to.
-      // This correctly reflects fine-grained PAT scopes and classic PAT repo scopes.
-      const allPages = await octokit.paginate(octokit.repos.listForAuthenticatedUser, {
-        per_page: 100,
-        sort: 'updated',
-        affiliation: 'owner,collaborator,organization_member',
-      });
+      // Installation tokens use the installation endpoint. Keep the user-repo
+      // fallback for local configurations that still provide a user token.
+      let allPages;
+      try {
+        allPages = await octokit.paginate(
+          octokit.apps.listReposAccessibleToInstallation,
+          { per_page: 100 },
+        );
+      } catch (error: any) {
+        if (error.status !== 403 && error.status !== 404) throw error;
+        allPages = await octokit.paginate(octokit.repos.listForAuthenticatedUser, {
+          per_page: 100,
+          sort: 'updated',
+          affiliation: 'owner,collaborator,organization_member',
+        });
+      }
 
       // Keep only repos belonging to the configured owner AND where the token has write access
       const repos = allPages
@@ -158,8 +196,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg = getGitHubConfig(config);
       const repo = (req.body?.repo as string) || cfg.repo;
-      const { token, owner, branch } = cfg;
-      const octokit = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit = new Octokit({ auth: credentials.token });
 
       const uploadPath = (req.body?.uploadPath as string) ?? '';
       const safeName   = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -185,9 +224,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           {
             method: 'POST',
             headers: {
+              ...getGitHubAuthHeaders(credentials),
               'Content-Type':  'application/vnd.git-lfs+json',
               'Accept':        'application/vnd.git-lfs+json',
-              'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
               operation: 'upload',
@@ -280,8 +319,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const cfg = getGitHubConfig(config);
       const repo    = (req.query.repo as string) || cfg.repo;
       const dirPath = (req.query.path as string) ?? '';
-      const { token, owner, branch } = cfg;
-      const octokit = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit = new Octokit({ auth: credentials.token });
 
       let items: object[] = [];
       try {
@@ -332,8 +372,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg = getGitHubConfig(config);
       const repo   = (req.query.repo as string) || cfg.repo;
-      const { token, owner, branch } = cfg;
-      const octokit = new Octokit({ auth: token });
+      const { owner, branch } = cfg;
+      const credentials = await getGitHubCredentials(cfg, repo);
+      const octokit = new Octokit({ auth: credentials.token });
 
       // Get current SHA (required by GitHub API)
       const existing = await octokit.repos.getContent({ owner, repo, path: filePath, ref: branch });
