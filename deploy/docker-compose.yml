@@ -53,15 +53,15 @@ services:
       - -c
       - |
           set -eu
-          for attempt in $(seq 1 60); do
+          for attempt in $$(seq 1 60); do
             if node -e "fetch(process.env.KEYCLOAK_METADATA_URL).then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"; then
               break
             fi
-            if [ "$attempt" -eq 60 ]; then
+            if [ "$$attempt" -eq 60 ]; then
               echo "Keycloak OIDC metadata did not become available" >&2
               exit 1
             fi
-            echo "Waiting for Keycloak OIDC metadata ($attempt/60)" >&2
+            echo "Waiting for Keycloak OIDC metadata ($$attempt/60)" >&2
             sleep 5
           done
           exec node packages/backend \
@@ -125,10 +125,15 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=$${POSTGRES_PASSWORD} psql -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" -c 'SELECT 1' >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 10s
 
 volumes:
   pgdata:

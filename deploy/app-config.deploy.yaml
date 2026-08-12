@@ -16,6 +16,15 @@
 backend:
   csp:
     upgrade-insecure-requests: false
+  # A sincronização de usuários/grupos é complementar ao login. Se o primeiro
+  # acesso administrativo ao Keycloak falhar, o catálogo registra o erro e o
+  # Auth/OIDC continua podendo inicializar.
+  startup:
+    plugins:
+      catalog:
+        modules:
+          catalog-backend-module-keycloak:
+            onPluginModuleBootFailure: continue
 
 # ── Auth: Keycloak (OIDC) ────────────────────────────────────────────────────
 # Keycloak do lab roda em um compose separado, ligado à rede Docker
