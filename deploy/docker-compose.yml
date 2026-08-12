@@ -14,7 +14,9 @@ services:
       # FortiGate (SSL-inspection) só intercepta TLS 1.3 e devolve cadeia
       # incompleta; forçar TLS 1.2 passa direto (cert real do GitHub verificável),
       # necessário p/ o catálogo/TechDocs do k9 lerem api.github.com de dentro do container.
-      NODE_OPTIONS: --tls-max-v1.2
+      # Preserve o snapshot desativado exigido pelo Scaffolder e também
+      # limite o TLS por causa do FortiGate.
+      NODE_OPTIONS: "--no-node-snapshot --tls-max-v1.2"
       # Postgres (serviço abaixo, mesma rede do compose)
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
