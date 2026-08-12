@@ -49,14 +49,25 @@ services:
       # sobrescreveria). Montada read-only.
       - ./app-config.deploy.yaml:/app/app-config.deploy.yaml:ro
     command:
-      - node
-      - packages/backend
-      - --config
-      - app-config.yaml
-      - --config
-      - app-config.production.yaml
-      - --config
-      - app-config.deploy.yaml
+      - sh
+      - -c
+      - |
+          set -eu
+          for attempt in $(seq 1 60); do
+            if node -e "fetch(process.env.KEYCLOAK_METADATA_URL).then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo "Keycloak OIDC metadata did not become available" >&2
+              exit 1
+            fi
+            echo "Waiting for Keycloak OIDC metadata ($attempt/60)" >&2
+            sleep 5
+          done
+          exec node packages/backend \
+            --config app-config.yaml \
+            --config app-config.production.yaml \
+            --config app-config.deploy.yaml
     depends_on:
       postgres:
         condition: service_healthy

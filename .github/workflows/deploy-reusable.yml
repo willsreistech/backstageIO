@@ -147,14 +147,25 @@ jobs:
         run: |
           ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
           cd "${{ inputs.deploy-dir }}"
-          for i in $(seq 1 40); do
+          for i in $(seq 1 80); do
             if curl -fsS http://localhost:7007/healthcheck >/dev/null 2>&1 \
                || curl -fsS http://localhost:7007 >/dev/null 2>&1; then
-              echo "✅ Backstage UP"
-              docker compose ps
-              exit 0
+              oidc_status=$(curl -sS -o /dev/null -w '%{http_code}' \
+                --get \
+                --data-urlencode 'scope=openid profile email' \
+                --data-urlencode 'origin=http://192.168.56.10:7007' \
+                --data-urlencode 'flow=popup' \
+                --data-urlencode 'env=production' \
+                http://localhost:7007/api/auth/oidc/start || true)
+              case "$oidc_status" in
+                302|303)
+                  echo "✅ Backstage and OIDC UP"
+                  docker compose ps
+                  exit 0
+                  ;;
+              esac
             fi
-            echo "aguardando backstage subir... ($i/40)"
+            echo "aguardando backstage/OIDC subir... ($i/80)"
             sleep 5
           done
           echo "❌ Health check falhou — últimos logs:"
