@@ -350,3 +350,54 @@ jobs:
             "fetch(process.env.KEYCLOAK_METADATA_URL).then(r => { console.log(r.status); process.exit(r.ok ? 0 : 1); }).catch(error => { console.error(error); process.exit(1); })"
           exit 1
           REMOTE
+      - name: Check Keycloak admin auth from Backstage
+        run: |
+          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
+          cd "${{ inputs.deploy-dir }}"
+
+          for i in $(seq 1 12); do
+            if docker compose exec -T backstage node -e '
+              const required = ["KEYCLOAK_BASE_URL","KEYCLOAK_ADMIN_USER","KEYCLOAK_ADMIN_PASSWORD"];
+              const missing = required.filter(k => !process.env[k]);
+              if (missing.length) {
+                console.error("missing env:", missing.join(", "));
+                process.exit(1);
+              }
+
+              const body = new URLSearchParams({
+                grant_type: "password",
+                client_id: "admin-cli",
+                username: process.env.KEYCLOAK_ADMIN_USER,
+                password: process.env.KEYCLOAK_ADMIN_PASSWORD,
+              });
+
+              const url = process.env.KEYCLOAK_BASE_URL + "/realms/master/protocol/openid-connect/token";
+
+              fetch(url, {
+                method: "POST",
+                headers: { "content-type": "application/x-www-form-urlencoded" },
+                body,
+              })
+                .then(async r => {
+                  const txt = await r.text();
+                  console.log("status", r.status);
+                  if (!r.ok) console.log(txt.slice(0, 400));
+                  process.exit(r.ok ? 0 : 1);
+                })
+                .catch(err => {
+                  console.error(err);
+                  process.exit(1);
+                });
+            '; then
+              echo "✅ Keycloak admin auth OK"
+              exit 0
+            fi
+            echo "aguardando auth admin do Keycloak... ($i/12)"
+            sleep 5
+          done
+
+          echo "❌ Falha ao autenticar no admin API do Keycloak a partir do Backstage"
+          docker compose logs --no-color --since=10m backstage
+          exit 1
+          REMOTE
+
