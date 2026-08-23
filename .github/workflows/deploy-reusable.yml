@@ -159,6 +159,21 @@ jobs:
           SESSION_SECRET:    ${{ secrets.AUTH_SESSION_SECRET }}
         run: |
           umask 077
+          private_key_input="$BACKSTAGE_GH_APP_PRIVATE_KEY_B64"
+          if printf '%s' "$private_key_input" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            private_key_pem="$(printf '%s' "$private_key_input" | sed 's/\\n/\n/g')"
+            private_key_b64="$(printf '%s' "$private_key_pem" | base64 | tr -d '\r\n')"
+          else
+            private_key_b64="$(printf '%s' "$private_key_input" | tr -d '[:space:]')"
+          fi
+          if ! decoded_private_key="$(printf '%s' "$private_key_b64" | base64 -d 2>/dev/null)"; then
+            echo "::error::BACKSTAGE_GH_APP_PRIVATE_KEY_B64 não contém Base64 válido ou uma chave PEM"
+            exit 1
+          fi
+          if ! printf '%s' "$decoded_private_key" | grep -q -- '-----BEGIN .*PRIVATE KEY-----'; then
+            echo "::error::BACKSTAGE_GH_APP_PRIVATE_KEY_B64 não decodifica uma chave privada PEM"
+            exit 1
+          fi
           cat > .env << ENVEOF
           IMAGE_TAG=${{ inputs.image-tag }}
           APP_BASE_URL=${APP_BASE_URL}
@@ -168,7 +183,7 @@ jobs:
           BACKSTAGE_GH_APP_ID=${BACKSTAGE_GH_APP_ID}
           BACKSTAGE_GH_APP_CLIENT_ID=${BACKSTAGE_GH_APP_CLIENT_ID}
           BACKSTAGE_GH_APP_CLIENT_SECRET=${BACKSTAGE_GH_APP_CLIENT_SECRET}
-          BACKSTAGE_GH_APP_PRIVATE_KEY_B64=${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}
+          BACKSTAGE_GH_APP_PRIVATE_KEY_B64=${private_key_b64}
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           MINIO_ROOT_USER=${MINIO_USER:-minioadmin}

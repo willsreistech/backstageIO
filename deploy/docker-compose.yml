@@ -60,7 +60,8 @@ services:
       - |
           set -eu
           if [ -n "$${BACKSTAGE_GH_APP_PRIVATE_KEY_B64:-}" ]; then
-            if ! decoded_key="$$(printf '%s' "$${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}" | base64 -d)"; then
+            encoded_key="$$(printf '%s' "$${BACKSTAGE_GH_APP_PRIVATE_KEY_B64}" | tr -d '[:space:]')"
+            if ! decoded_key="$$(printf '%s' "$$encoded_key" | base64 -d)"; then
               echo "Invalid GitHub App private key encoding" >&2
               exit 1
             fi
