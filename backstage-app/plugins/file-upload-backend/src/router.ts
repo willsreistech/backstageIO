@@ -112,6 +112,18 @@ function shouldUseLfs(config: Config, filename: string, fileSize: number): boole
   return lfsExts.map(e => e.toLowerCase()).includes(ext);
 }
 
+function normalizeRepoPath(value: string): string {
+  const normalized = path.posix.normalize(value.replace(/\\/g, '/')).replace(/^\.\//, '');
+  if (!normalized || normalized === '.' || normalized.startsWith('../') || normalized.startsWith('/') || normalized.includes('/../')) {
+    throw new Error('Repository path must stay within the repository root.');
+  }
+  return normalized;
+}
+
+function isWithinDirectory(filePath: string, directory: string): boolean {
+  return filePath === directory || filePath.startsWith(`${directory}/`);
+}
+
 export async function createRouter(options: RouterOptions): Promise<Router> {
   const { config, logger } = options;
 
@@ -175,7 +187,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
           private: r.private,
         }));
 
-      res.json({ repos, owner });
+      res.json({ repos, owner, targetDir: cfg.targetDir });
     } catch (err: any) {
       logger.error(`List repos failed: ${err.message}`);
       res.status(500).json({ error: err.message });
@@ -200,9 +212,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
 
-      const uploadPath = (req.body?.uploadPath as string) ?? '';
+      const targetDir = normalizeRepoPath(cfg.targetDir);
+      const requestedPath = (req.body?.uploadPath as string) || targetDir;
+      const uploadPath = normalizeRepoPath(requestedPath);
+      if (!isWithinDirectory(uploadPath, targetDir)) {
+        res.status(400).json({ error: `Uploads must be placed inside ${targetDir}.` });
+        return;
+      }
       const safeName   = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const remotePath = uploadPath ? `${uploadPath}/${safeName}` : safeName;
+      const remotePath = `${uploadPath}/${safeName}`;
       const fileSize   = req.file.size;
 
       /** Fetch the SHA of an existing file in the repo (undefined if not found). */
@@ -371,13 +389,19 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     }
     try {
       const cfg = getGitHubConfig(config);
+      const normalizedPath = normalizeRepoPath(filePath);
+      const targetDir = normalizeRepoPath(cfg.targetDir);
+      if (!isWithinDirectory(normalizedPath, targetDir)) {
+        res.status(400).json({ error: `Only files inside ${targetDir} can be deleted.` });
+        return;
+      }
       const repo   = (req.query.repo as string) || cfg.repo;
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
 
       // Get current SHA (required by GitHub API)
-      const existing = await octokit.repos.getContent({ owner, repo, path: filePath, ref: branch });
+      const existing = await octokit.repos.getContent({ owner, repo, path: normalizedPath, ref: branch });
       if (Array.isArray(existing.data) || !existing.data.sha) {
         res.status(400).json({ error: 'Target is a directory, not a file.' });
         return;
@@ -385,15 +409,15 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
       await octokit.repos.deleteFile({
         owner, repo,
-        path: filePath,
-        message: `chore: remove ${filePath}`,
+        path: normalizedPath,
+        message: `chore: remove ${normalizedPath}`,
         sha: existing.data.sha,
         branch,
       });
-      logger.info(`File deleted from GitHub: ${owner}/${repo}/${filePath}`);
+      logger.info(`File deleted from GitHub: ${owner}/${repo}/${normalizedPath}`);
 
       // Best-effort: remove matching local copy
-      const filename = filePath.split('/').pop() ?? filePath;
+      const filename = normalizedPath.split('/').pop() ?? normalizedPath;
       try {
         for (const f of fs.readdirSync(uploadDir).filter(f => f === filename || f.endsWith(`-${filename}`))) {
           fs.unlinkSync(path.join(uploadDir, f));
@@ -401,7 +425,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         }
       } catch { /* non-critical */ }
 
-      res.json({ message: `File "${filePath}" deleted from GitHub.` });
+      res.json({ message: `File "${normalizedPath}" deleted from GitHub.` });
     } catch (err: any) {
       logger.error(`Delete file failed: ${err.message}`);
       res.status(500).json({ error: err.message });
