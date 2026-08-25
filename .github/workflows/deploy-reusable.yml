@@ -91,6 +91,13 @@ jobs:
             echo "::error::KEYCLOAK_INTERNAL_METADATA_URL e KEYCLOAK_INTERNAL_BASE_URL devem ser definidos juntos"
             missing=1
           fi
+          case "$APP_BASE_URL" in
+            http://*:*|https://*:*) ;;
+            *)
+              echo "::error::APP_BASE_URL deve ser uma URL absoluta com protocolo e porta (ex.: http://192.168.1.4:7007)"
+              missing=1
+              ;;
+          esac
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
