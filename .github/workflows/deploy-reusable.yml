@@ -1,20 +1,14 @@
 name: Deploy (reusable)
 
 # ── Reusable workflow ─────────────────────────────────────────────────────────
-# Contém TODA a lógica de deploy no modelo HÍBRIDO:
-#   1. Builda a imagem Docker AQUI no runner (que tem rede/registry liberados e
-#      embute o gerador MkDocs/TechDocs).
-#   2. Envia a imagem pronta para o servidor de deploy via SSH
-#      (`docker save | ssh docker load`) — contorna o FortiGate, que bloqueia
-#      `docker pull` no servidor.
-#   3. Copia docker-compose.yml + app-config.deploy.yaml + .env (gerado dos
-#      secrets) para o servidor e sobe o stack lá (`docker compose up -d`).
-#   4. Health check remoto.
+# Contém toda a lógica de build e deploy na VM que executa o runner:
+#   1. Builda a imagem Docker no runner.
+#   2. Gera o .env a partir dos secrets do environment.
+#   3. Executa o Docker Compose localmente na VM.
+#   4. Faz o health check local.
 #
-# Pré-requisitos no runner: docker + uma chave SSH (~/.ssh/id_ed25519) autorizada
-# no usuário de deploy do servidor, e o servidor no known_hosts.
-# Pré-requisitos no servidor: docker (usuário no grupo docker) e a imagem base
-# `postgres:15` já carregada (também bloqueada pelo FortiGate → side-load 1x).
+# Pré-requisitos no runner: Docker, Docker Compose e permissão do usuário para
+# executar Docker. A rede externa `backstage-auth` deve ser criada pelo job.
 
 on:
   workflow_call:
@@ -27,16 +21,8 @@ on:
         description: Label do runner self-hosted (development/quality/production)
         required: true
         type: string
-      ssh-host:
-        description: Host/IP do servidor de deploy (destino do SSH)
-        required: true
-        type: string
-      ssh-user:
-        description: Usuário SSH no servidor de deploy
-        required: true
-        type: string
       deploy-dir:
-        description: Diretório de deploy no servidor (ex. ~/backstage)
+        description: Diretório de deploy na VM (ex. /home/wsr/backstage)
         required: true
         type: string
       image-tag:
@@ -50,10 +36,6 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.runner }}"]
     environment: ${{ inputs.environment }}
 
-    env:
-      SSH_TARGET: ${{ inputs.ssh-user }}@${{ inputs.ssh-host }}
-      SSH_OPTS: -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,12 +46,14 @@ jobs:
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
+          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
           BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
           BACKSTAGE_GH_APP_PRIVATE_KEY_B64: ${{ secrets.BACKSTAGE_GH_APP_PRIVATE_KEY_B64 }}
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB:       ${{ secrets.POSTGRES_DB || secrets.POSTGRES_USER }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
           KC_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD || secrets.KC_ADMIN_PASSWORD }}
           SESSION_SECRET:    ${{ secrets.AUTH_SESSION_SECRET }}
@@ -77,12 +61,13 @@ jobs:
           KC_INTERNAL_BASE_URL:     ${{ secrets.KEYCLOAK_INTERNAL_BASE_URL }}
         run: |
           missing=0
-          for name in APP_BASE_URL GHUB_OWNER GHUB_REPO GHUB_BRANCH BACKSTAGE_GH_APP_ID BACKSTAGE_GH_APP_CLIENT_ID BACKSTAGE_GH_APP_CLIENT_SECRET BACKSTAGE_GH_APP_PRIVATE_KEY_B64 POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_ADMIN_PASSWORD SESSION_SECRET; do
+          for name in APP_BASE_URL GHUB_OWNER GHUB_REPO GHUB_BRANCH GHUB_TOKEN BACKSTAGE_GH_APP_ID BACKSTAGE_GH_APP_CLIENT_ID BACKSTAGE_GH_APP_CLIENT_SECRET BACKSTAGE_GH_APP_PRIVATE_KEY_B64 POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_ADMIN_PASSWORD SESSION_SECRET; do
             case "$name" in
               APP_BASE_URL) value="$APP_BASE_URL" ;;
               GHUB_OWNER) value="$GHUB_OWNER" ;;
               GHUB_REPO) value="$GHUB_REPO" ;;
               GHUB_BRANCH) value="$GHUB_BRANCH" ;;
+              GHUB_TOKEN) value="$GHUB_TOKEN" ;;
               BACKSTAGE_GH_APP_ID) value="$BACKSTAGE_GH_APP_ID" ;;
               BACKSTAGE_GH_APP_CLIENT_ID) value="$BACKSTAGE_GH_APP_CLIENT_ID" ;;
               BACKSTAGE_GH_APP_CLIENT_SECRET) value="$BACKSTAGE_GH_APP_CLIENT_SECRET" ;;
@@ -114,25 +99,6 @@ jobs:
       - name: Build image
         run: DOCKER_BUILDKIT=1 docker build backstage-app -f deploy/Dockerfile -t "${{ inputs.image-tag }}"
 
-      # Envia a imagem pronta pro servidor (contorna o FortiGate no pull).
-      - name: Ship image to server
-        run: |
-          docker save "${{ inputs.image-tag }}" | gzip \
-            | ssh $SSH_OPTS "$SSH_TARGET" 'gunzip | docker load'
-
-      # MinIO (storage do TechDocs): o servidor não consegue `docker pull`
-      # (FortiGate), então o runner puxa e envia — só se ainda não existirem lá.
-      - name: Ship MinIO images to server (if missing)
-        run: |
-          for img in minio/minio:latest minio/mc:latest; do
-            if ssh $SSH_OPTS "$SSH_TARGET" "docker image inspect $img >/dev/null 2>&1"; then
-              echo "✔ $img já existe no servidor"
-            else
-              docker pull "$img"
-              docker save "$img" | gzip | ssh $SSH_OPTS "$SSH_TARGET" 'gunzip | docker load'
-            fi
-          done
-
       - name: Write .env
         # Secrets do environment expostos como env (sem o prefixo reservado GITHUB_)
         # e gravados no .env com os nomes que a aplicação/compose esperam.
@@ -141,12 +107,14 @@ jobs:
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
+          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
           BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
           BACKSTAGE_GH_APP_PRIVATE_KEY_B64: ${{ secrets.BACKSTAGE_GH_APP_PRIVATE_KEY_B64 }}
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB:       ${{ secrets.POSTGRES_DB || secrets.POSTGRES_USER }}
           MINIO_USER:        ${{ secrets.MINIO_ROOT_USER }}
           MINIO_PASSWORD:    ${{ secrets.MINIO_ROOT_PASSWORD }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
@@ -175,21 +143,34 @@ jobs:
             exit 1
           fi
           cat > .env << ENVEOF
-          IMAGE_TAG=${{ inputs.image-tag }}
+          BACKSTAGE_IMAGE=${{ inputs.image-tag }}
+          BACKSTAGE_CONTAINER_NAME=backstage
+          BACKSTAGE_PORT=7007
+          POSTGRES_IMAGE=postgres:15
+          POSTGRES_CONTAINER_NAME=backstage-db
+          MINIO_IMAGE=minio/minio:latest
+          MINIO_MC_IMAGE=minio/mc:latest
+          MINIO_CONTAINER_NAME=backstage-minio
+          MINIO_INIT_CONTAINER_NAME=backstage-minio-init
+          MINIO_PORT=9000
+          MINIO_CONSOLE_PORT=9001
           APP_BASE_URL=${APP_BASE_URL}
-          GITHUB_OWNER=${GHUB_OWNER}
-          GITHUB_REPO=${GHUB_REPO}
-          GITHUB_BRANCH=${GHUB_BRANCH}
+          GHUB_OWNER=${GHUB_OWNER}
+          GHUB_REPO=${GHUB_REPO}
+          GHUB_BRANCH=${GHUB_BRANCH}
+          GHUB_TOKEN=${GHUB_TOKEN}
           BACKSTAGE_GH_APP_ID=${BACKSTAGE_GH_APP_ID}
           BACKSTAGE_GH_APP_CLIENT_ID=${BACKSTAGE_GH_APP_CLIENT_ID}
           BACKSTAGE_GH_APP_CLIENT_SECRET=${BACKSTAGE_GH_APP_CLIENT_SECRET}
           BACKSTAGE_GH_APP_PRIVATE_KEY_B64=${private_key_b64}
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_DB=${POSTGRES_DB:-$POSTGRES_USER}
           MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
           MINIO_ROOT_PASSWORD=${MINIO_PASSWORD:-minioadmin}
           KEYCLOAK_CLIENT_ID=backstage
           KEYCLOAK_CLIENT_SECRET=${KC_CLIENT_SECRET}
+          KEYCLOAK_METADATA_URL=${KC_INTERNAL_METADATA_URL:-http://keycloak:8080/realms/backstage/.well-known/openid-configuration}
           KEYCLOAK_INTERNAL_METADATA_URL=${KC_INTERNAL_METADATA_URL}
           KEYCLOAK_INTERNAL_BASE_URL=${KC_INTERNAL_BASE_URL}
           KEYCLOAK_ADMIN_USER=admin
@@ -198,206 +179,27 @@ jobs:
           ENVEOF
           chmod 600 .env
 
-      - name: Ensure shared Docker network
+      - name: Deploy locally
+        working-directory: ${{ github.workspace }}
         run: |
-          ssh $SSH_OPTS "$SSH_TARGET" \
-            "docker network inspect backstage-auth >/dev/null 2>&1 || docker network create backstage-auth"
-
-      - name: Copy stack files to server
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" "mkdir -p '${{ inputs.deploy-dir }}'"
-          scp $SSH_OPTS \
-            deploy/docker-compose.yml \
-            deploy/app-config.deploy.yaml \
-            .env \
-            "$SSH_TARGET:${{ inputs.deploy-dir }}/"
-
-      - name: Deploy stack (remoto)
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" \
-            "cd '${{ inputs.deploy-dir }}' && docker compose config --quiet && docker compose up -d --remove-orphans"
-
-      - name: Validate runtime dependencies (remoto)
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
+          mkdir -p "${{ inputs.deploy-dir }}"
+          cp deploy/docker-compose.yml deploy/app-config.deploy.yaml .env "${{ inputs.deploy-dir }}/"
+          docker network inspect backstage-auth >/dev/null 2>&1 || docker network create backstage-auth
           cd "${{ inputs.deploy-dir }}"
-          for i in $(seq 1 60); do
-            if docker compose exec -T backstage node -e '
-              const { Client } = require("pg");
-              (async () => {
-                const client = new Client({
-                  host: process.env.POSTGRES_HOST,
-                  port: Number(process.env.POSTGRES_PORT),
-                  user: process.env.POSTGRES_USER,
-                  password: process.env.POSTGRES_PASSWORD,
-                  database: process.env.POSTGRES_USER,
-                  connectionTimeoutMillis: 5000,
-                });
-                try {
-                  await client.connect();
-                  await client.query("SELECT 1");
-                  console.log("PostgreSQL reachable with Backstage credentials");
-                } finally {
-                  await client.end().catch(() => {});
-                }
-              })().catch(error => {
-                console.error(`PostgreSQL check failed: ${error.message}`);
-                process.exit(1);
-              });
-            ' && \
-            docker compose exec -T backstage node -e '
-              fetch(process.env.KEYCLOAK_METADATA_URL)
-                .then(response => {
-                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                  console.log("OIDC metadata reachable from Backstage");
-                })
-                .catch(error => {
-                  console.error(`OIDC metadata check failed: ${error.message}`);
-                  process.exit(1);
-                });
-            '; then
+          docker compose config --quiet
+          docker compose up -d --remove-orphans
+
+      - name: Health check
+        run: |
+          for attempt in $(seq 1 80); do
+            if curl -fsS http://localhost:7007 >/dev/null 2>&1; then
+              docker compose --env-file "${{ inputs.deploy-dir }}/.env" -f "${{ inputs.deploy-dir }}/docker-compose.yml" ps
               exit 0
             fi
-            echo "aguardando PostgreSQL/Keycloak... ($i/60)"
+            echo "aguardando backstage subir... ($attempt/80)"
             sleep 5
           done
-          echo "❌ Dependência do Backstage indisponível:"
-          docker compose ps
-          docker compose exec -T backstage node -e '
-            const { Client } = require("pg");
-            (async () => {
-              const client = new Client({
-                host: process.env.POSTGRES_HOST,
-                port: Number(process.env.POSTGRES_PORT),
-                user: process.env.POSTGRES_USER,
-                password: process.env.POSTGRES_PASSWORD,
-                database: process.env.POSTGRES_USER,
-                connectionTimeoutMillis: 5000,
-              });
-              try {
-                await client.connect();
-                await client.query("SELECT 1");
-                console.log("PostgreSQL OK");
-              } finally {
-                await client.end().catch(() => {});
-              }
-            })().catch(error => {
-              console.error(error);
-              process.exit(1);
-            });
-          ' || true
-          docker compose exec -T backstage node -e '
-            fetch(process.env.KEYCLOAK_METADATA_URL)
-              .then(async response => {
-                console.log(`OIDC metadata HTTP ${response.status}`);
-                console.log(await response.text());
-                process.exit(response.ok ? 0 : 1);
-              })
-              .catch(error => {
-                console.error(error);
-                process.exit(1);
-              });
-          ' || true
+          docker compose --env-file "${{ inputs.deploy-dir }}/.env" -f "${{ inputs.deploy-dir }}/docker-compose.yml" ps
+          docker compose --env-file "${{ inputs.deploy-dir }}/.env" -f "${{ inputs.deploy-dir }}/docker-compose.yml" logs --no-color --since=20m backstage
           exit 1
-          REMOTE
-
-      - name: Health check (remoto)
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
-          cd "${{ inputs.deploy-dir }}"
-          for i in $(seq 1 80); do
-            if curl -fsS http://localhost:7007/healthcheck >/dev/null 2>&1 \
-               || curl -fsS http://localhost:7007 >/dev/null 2>&1; then
-              oidc_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-                --get \
-                --data-urlencode 'scope=openid profile email' \
-                --data-urlencode 'origin=http://192.168.56.10:7007' \
-                --data-urlencode 'flow=popup' \
-                --data-urlencode 'env=production' \
-                http://localhost:7007/api/auth/oidc/start || true)
-              case "$oidc_status" in
-                302|303)
-                  echo "✅ Backstage and OIDC UP"
-                  docker compose ps
-                  exit 0
-                  ;;
-              esac
-            fi
-            echo "aguardando backstage/OIDC subir... ($i/80)"
-            sleep 5
-          done
-          echo "❌ Health check falhou — estado dos serviços:"
-          docker compose ps
-          echo "❌ Logs do Backstage desde o início do deploy:"
-          docker compose logs --no-color --since=20m backstage
-          exit 1
-          REMOTE
-
-      - name: Check OIDC connectivity from Backstage
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
-          cd "${{ inputs.deploy-dir }}"
-          for i in $(seq 1 12); do
-            if docker compose exec -T backstage node -e \
-              "fetch(process.env.KEYCLOAK_METADATA_URL).then(r => { if (!r.ok) process.exit(1); console.log('OIDC metadata reachable'); }).catch(() => process.exit(1))"; then
-              exit 0
-            fi
-            echo "aguardando conectividade OIDC... ($i/12)"
-            sleep 5
-          done
-          echo "❌ Backstage não consegue acessar o metadata OIDC do Keycloak:"
-          docker compose exec -T backstage node -e \
-            "fetch(process.env.KEYCLOAK_METADATA_URL).then(r => { console.log(r.status); process.exit(r.ok ? 0 : 1); }).catch(error => { console.error(error); process.exit(1); })"
-          exit 1
-          REMOTE
-      - name: Check Keycloak admin auth from Backstage
-        run: |
-          ssh $SSH_OPTS "$SSH_TARGET" bash -s << 'REMOTE'
-          cd "${{ inputs.deploy-dir }}"
-
-          for i in $(seq 1 12); do
-            if docker compose exec -T backstage node -e '
-              const required = ["KEYCLOAK_BASE_URL","KEYCLOAK_ADMIN_USER","KEYCLOAK_ADMIN_PASSWORD"];
-              const missing = required.filter(k => !process.env[k]);
-              if (missing.length) {
-                console.error("missing env:", missing.join(", "));
-                process.exit(1);
-              }
-
-              const body = new URLSearchParams({
-                grant_type: "password",
-                client_id: "admin-cli",
-                username: process.env.KEYCLOAK_ADMIN_USER,
-                password: process.env.KEYCLOAK_ADMIN_PASSWORD,
-              });
-
-              const url = process.env.KEYCLOAK_BASE_URL + "/realms/master/protocol/openid-connect/token";
-
-              fetch(url, {
-                method: "POST",
-                headers: { "content-type": "application/x-www-form-urlencoded" },
-                body,
-              })
-                .then(async r => {
-                  const txt = await r.text();
-                  console.log("status", r.status);
-                  if (!r.ok) console.log(txt.slice(0, 400));
-                  process.exit(r.ok ? 0 : 1);
-                })
-                .catch(err => {
-                  console.error(err);
-                  process.exit(1);
-                });
-            '; then
-              echo "✅ Keycloak admin auth OK"
-              exit 0
-            fi
-            echo "aguardando auth admin do Keycloak... ($i/12)"
-            sleep 5
-          done
-
-          echo "❌ Falha ao autenticar no admin API do Keycloak a partir do Backstage"
-          docker compose logs --no-color --since=10m backstage
-          exit 1
-          REMOTE
 
