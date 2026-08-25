@@ -1,6 +1,17 @@
 name: Build & Deploy
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente que receberá o deploy
+        required: true
+        type: choice
+        default: development
+        options:
+          - development
+          - quality
+          - production
   push:
     branches:
       - main
@@ -22,7 +33,10 @@ jobs:
   # ── development: develop e feature/* ──────────────────────────────────────
   development:
     name: development
-    if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/')
+    if: >-
+      (github.event_name == 'push' &&
+        (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/'))) ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
     uses: ./.github/workflows/deploy-reusable.yml
     secrets: inherit
     with:
@@ -34,7 +48,9 @@ jobs:
   # ── quality: release/* ────────────────────────────────────────────────────
   quality:
     name: quality
-    if: startsWith(github.ref, 'refs/heads/release/')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'quality')
     uses: ./.github/workflows/deploy-reusable.yml
     secrets: inherit
     with:
@@ -46,7 +62,9 @@ jobs:
   # ── production: main ──────────────────────────────────────────────────────
   production:
     name: production
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     uses: ./.github/workflows/deploy-reusable.yml
     secrets: inherit
     with:
