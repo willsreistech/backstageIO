@@ -45,8 +45,8 @@ jobs:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
+          GHUB_ALLOWED_REPOS: ${{ secrets.GHUB_ALLOWED_REPOS || secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
-          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
           BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
@@ -55,19 +55,18 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB:       ${{ secrets.POSTGRES_DB || secrets.POSTGRES_USER }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
-          KC_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD || secrets.KC_ADMIN_PASSWORD }}
+          KC_CATALOG_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CATALOG_CLIENT_SECRET }}
           SESSION_SECRET:    ${{ secrets.AUTH_SESSION_SECRET }}
           KC_INTERNAL_METADATA_URL: ${{ secrets.KEYCLOAK_INTERNAL_METADATA_URL }}
           KC_INTERNAL_BASE_URL:     ${{ secrets.KEYCLOAK_INTERNAL_BASE_URL }}
         run: |
           missing=0
-          for name in APP_BASE_URL GHUB_OWNER GHUB_REPO GHUB_BRANCH GHUB_TOKEN BACKSTAGE_GH_APP_ID BACKSTAGE_GH_APP_CLIENT_ID BACKSTAGE_GH_APP_CLIENT_SECRET BACKSTAGE_GH_APP_PRIVATE_KEY_B64 POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_ADMIN_PASSWORD SESSION_SECRET; do
+          for name in APP_BASE_URL GHUB_OWNER GHUB_REPO GHUB_BRANCH BACKSTAGE_GH_APP_ID BACKSTAGE_GH_APP_CLIENT_ID BACKSTAGE_GH_APP_CLIENT_SECRET BACKSTAGE_GH_APP_PRIVATE_KEY_B64 POSTGRES_USER POSTGRES_PASSWORD KC_CLIENT_SECRET KC_CATALOG_CLIENT_SECRET SESSION_SECRET; do
             case "$name" in
               APP_BASE_URL) value="$APP_BASE_URL" ;;
               GHUB_OWNER) value="$GHUB_OWNER" ;;
               GHUB_REPO) value="$GHUB_REPO" ;;
               GHUB_BRANCH) value="$GHUB_BRANCH" ;;
-              GHUB_TOKEN) value="$GHUB_TOKEN" ;;
               BACKSTAGE_GH_APP_ID) value="$BACKSTAGE_GH_APP_ID" ;;
               BACKSTAGE_GH_APP_CLIENT_ID) value="$BACKSTAGE_GH_APP_CLIENT_ID" ;;
               BACKSTAGE_GH_APP_CLIENT_SECRET) value="$BACKSTAGE_GH_APP_CLIENT_SECRET" ;;
@@ -75,7 +74,7 @@ jobs:
               POSTGRES_USER) value="$POSTGRES_USER" ;;
               POSTGRES_PASSWORD) value="$POSTGRES_PASSWORD" ;;
               KC_CLIENT_SECRET) value="$KC_CLIENT_SECRET" ;;
-              KC_ADMIN_PASSWORD) value="$KC_ADMIN_PASSWORD" ;;
+              KC_CATALOG_CLIENT_SECRET) value="$KC_CATALOG_CLIENT_SECRET" ;;
               SESSION_SECRET) value="$SESSION_SECRET" ;;
             esac
             if [ -z "$value" ]; then
@@ -119,8 +118,8 @@ jobs:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
+          GHUB_ALLOWED_REPOS: ${{ secrets.GHUB_ALLOWED_REPOS || secrets.GHUB_REPO }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
-          GHUB_TOKEN:        ${{ secrets.GHUB_TOKEN }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
           BACKSTAGE_GH_APP_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GH_APP_CLIENT_SECRET }}
@@ -136,7 +135,7 @@ jobs:
           # Keycloak endpoint.
           KC_INTERNAL_METADATA_URL: ${{ secrets.KEYCLOAK_INTERNAL_METADATA_URL }}
           KC_INTERNAL_BASE_URL:     ${{ secrets.KEYCLOAK_INTERNAL_BASE_URL }}
-          KC_ADMIN_PASSWORD: ${{ secrets.KEYCLOAK_ADMIN_PASSWORD || secrets.KC_ADMIN_PASSWORD }}
+          KC_CATALOG_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CATALOG_CLIENT_SECRET }}
           SESSION_SECRET:    ${{ secrets.AUTH_SESSION_SECRET }}
         run: |
           umask 077
@@ -170,8 +169,8 @@ jobs:
           APP_BASE_URL=${APP_BASE_URL}
           GHUB_OWNER=${GHUB_OWNER}
           GHUB_REPO=${GHUB_REPO}
+          GHUB_ALLOWED_REPOS=${GHUB_ALLOWED_REPOS}
           GHUB_BRANCH=${GHUB_BRANCH}
-          GHUB_TOKEN=${GHUB_TOKEN}
           BACKSTAGE_GH_APP_ID=${BACKSTAGE_GH_APP_ID}
           BACKSTAGE_GH_APP_CLIENT_ID=${BACKSTAGE_GH_APP_CLIENT_ID}
           BACKSTAGE_GH_APP_CLIENT_SECRET=${BACKSTAGE_GH_APP_CLIENT_SECRET}
@@ -186,8 +185,8 @@ jobs:
           KEYCLOAK_METADATA_URL=${KC_INTERNAL_METADATA_URL:-http://keycloak:8080/realms/backstage/.well-known/openid-configuration}
           KEYCLOAK_INTERNAL_METADATA_URL=${KC_INTERNAL_METADATA_URL}
           KEYCLOAK_INTERNAL_BASE_URL=${KC_INTERNAL_BASE_URL}
-          KEYCLOAK_ADMIN_USER=admin
-          KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+          KEYCLOAK_CATALOG_CLIENT_ID=backstage-catalog
+          KEYCLOAK_CATALOG_CLIENT_SECRET=${KC_CATALOG_CLIENT_SECRET}
           AUTH_SESSION_SECRET=${SESSION_SECRET}
           ENVEOF
           chmod 600 .env

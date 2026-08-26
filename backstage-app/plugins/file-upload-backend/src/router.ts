@@ -1,5 +1,10 @@
 import { Config } from '@backstage/config';
-import { LoggerService } from '@backstage/backend-plugin-api';
+import {
+  HttpAuthService,
+  LoggerService,
+  UserInfoService,
+} from '@backstage/backend-plugin-api';
+import { InputError, NotAllowedError } from '@backstage/errors';
 import {
   DefaultGithubCredentialsProvider,
   GithubCredentials,
@@ -44,7 +49,8 @@ function lfsHttpPut(url: string, headers: Record<string, string>, filePath: stri
       res => {
         res.resume(); // consume and discard response body
         const ok = (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300;
-        ok ? resolve() : reject(new Error(`LFS PUT failed: HTTP ${res.statusCode}`));
+        if (ok) resolve();
+        else reject(new Error(`LFS PUT failed: HTTP ${res.statusCode}`));
       },
     );
     req.on('error', reject);
@@ -55,6 +61,8 @@ function lfsHttpPut(url: string, headers: Record<string, string>, filePath: stri
 export interface RouterOptions {
   config: Config;
   logger: LoggerService;
+  httpAuth: HttpAuthService;
+  userInfo: UserInfoService;
 }
 
 /**
@@ -124,8 +132,13 @@ function isWithinDirectory(filePath: string, directory: string): boolean {
   return filePath === directory || filePath.startsWith(`${directory}/`);
 }
 
+function getAllowedRepos(config: Config, fallback: string): string[] {
+  const value = config.getOptionalString('fileUpload.github.allowedRepos');
+  return value ? value.split(',').map(repo => repo.trim()).filter(Boolean) : [fallback];
+}
+
 export async function createRouter(options: RouterOptions): Promise<Router> {
-  const { config, logger } = options;
+  const { config, logger, httpAuth, userInfo } = options;
 
   // ── Upload directory ──────────────────────────────────────────────────────
   const uploadDir = path.join(os.homedir(), 'data', 'uploads');
@@ -141,16 +154,53 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     },
   });
 
+  const maxFileSizeMb = config.getOptionalNumber('fileUpload.maxFileSizeMb') ?? 500;
   const upload = multer({
     storage,
-    limits: { fileSize: 5 * 1024 * 1024 * 1024 }, // 5 GB – large files go via LFS
+    limits: {
+      fileSize: maxFileSizeMb * 1024 * 1024,
+      files: 1,
+      fields: 2,
+    },
   });
 
   const router = Router();
   router.use(express.json());
 
+  const allowedGroups = new Set(
+    config.getOptionalStringArray('fileUpload.allowedGroups') ?? [
+      'group:default/platform-admin',
+      'group:default/artifact-publisher',
+    ],
+  );
+
+  const requirePublisher = async (req: Request, _res: Response, next: express.NextFunction) => {
+    try {
+      const credentials = await httpAuth.credentials(req);
+      const info = await userInfo.getUserInfo(credentials);
+      if (!info.ownershipEntityRefs.some(ref => allowedGroups.has(ref))) {
+        throw new NotAllowedError('User is not allowed to manage artifacts.');
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  const getAllowedRepo = (value: unknown, cfg: GitHubConfig): string => {
+    const repo = typeof value === 'string' && value ? value : cfg.repo;
+    if (!/^[A-Za-z0-9_.-]+$/.test(repo)) {
+      throw new InputError('Invalid repository name.');
+    }
+    const allowlist = getAllowedRepos(config, cfg.repo);
+    if (!allowlist.includes(repo)) {
+      throw new NotAllowedError(`Repository ${repo} is not approved for artifact uploads.`);
+    }
+    return repo;
+  };
+
   // ── GET /repos ────────────────────────────────────────────────────────────
-  router.get('/repos', async (_req: Request, res: Response) => {
+  router.get('/repos', requirePublisher, async (_req: Request, res: Response) => {
     try {
       const cfg = getGitHubConfig(config);
       const { owner } = cfg;
@@ -175,10 +225,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       }
 
       // Keep only repos belonging to the configured owner AND where the token has write access
+      const allowlist = new Set(getAllowedRepos(config, cfg.repo));
       const repos = allPages
         .filter((r: any) =>
           r.owner?.login?.toLowerCase() === owner.toLowerCase() &&
-          (r.permissions?.push === true || r.permissions?.admin === true),
+          (r.permissions?.push === true || r.permissions?.admin === true) &&
+          allowlist.has(r.name),
         )
         .map((r: any) => ({
           name: r.name,
@@ -195,7 +247,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   // ── POST /upload ──────────────────────────────────────────────────────────
-  router.post('/upload', upload.single('file') as unknown as express.RequestHandler, async (req: Request, res: Response) => {
+  router.post('/upload', requirePublisher, upload.single('file') as unknown as express.RequestHandler, async (req: Request, res: Response) => {
     if (!req.file) {
       res.status(400).json({ error: 'No file provided. Use form-field "file".' });
       return;
@@ -207,7 +259,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     // ── GitHub push (regular or LFS depending on file size) ─────────────────
     try {
       const cfg = getGitHubConfig(config);
-      const repo = (req.body?.repo as string) || cfg.repo;
+      const repo = getAllowedRepo(req.body?.repo, cfg);
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
@@ -294,7 +346,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         res.status(200).json({
           message:  'File uploaded via Git LFS and committed to GitHub.',
           lfs:      true,
-          localPath: savedPath,
           github:   { owner, repo, branch, path: remotePath, url: `https://github.com/${owner}/${repo}/blob/${branch}/${remotePath}` },
         });
 
@@ -315,27 +366,29 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         res.status(200).json({
           message:  'File uploaded and pushed to GitHub.',
           lfs:      false,
-          localPath: savedPath,
           github:   { owner, repo, branch, path: remotePath, url: `https://github.com/${owner}/${repo}/blob/${branch}/${remotePath}` },
         });
       }
     } catch (err: any) {
       logger.error(`GitHub push failed: ${err.message}`);
-      res.status(207).json({
-        message:   'File saved locally but GitHub push failed.',
-        localPath: savedPath,
-        error:     err.message,
+      res.status(502).json({
+        message: 'GitHub upload failed.',
+        error: 'The artifact could not be published. Check the backend logs.',
       });
+    } finally {
+      fs.promises.unlink(savedPath).catch(error =>
+        logger.warn(`Could not remove temporary upload ${savedPath}: ${error.message}`),
+      );
     }
   });
 
   // ── GET /list ─────────────────────────────────────────────────────────────
   // Lists the contents (files + directories) of a specific path in the repo.
   // ?repo=X  ?path=  (empty = root)
-  router.get('/list', async (req: Request, res: Response) => {
+  router.get('/list', requirePublisher, async (req: Request, res: Response) => {
     try {
       const cfg = getGitHubConfig(config);
-      const repo    = (req.query.repo as string) || cfg.repo;
+      const repo    = getAllowedRepo(req.query.repo, cfg);
       const dirPath = (req.query.path as string) ?? '';
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);
@@ -381,7 +434,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // ── DELETE /delete ─────────────────────────────────────────────────────────
   // Accepts the full file path via ?path= query param so any file in the repo
   // can be deleted, not just files inside targetDir.
-  router.delete('/delete', async (req: Request, res: Response) => {
+  router.delete('/delete', requirePublisher, async (req: Request, res: Response) => {
     const filePath = req.query.path as string | undefined;
     if (!filePath) {
       res.status(400).json({ error: 'Missing required query param: path' });
@@ -395,7 +448,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         res.status(400).json({ error: `Only files inside ${targetDir} can be deleted.` });
         return;
       }
-      const repo   = (req.query.repo as string) || cfg.repo;
+      const repo   = getAllowedRepo(req.query.repo, cfg);
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
@@ -419,9 +472,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       // Best-effort: remove matching local copy
       const filename = normalizedPath.split('/').pop() ?? normalizedPath;
       try {
-        for (const f of fs.readdirSync(uploadDir).filter(f => f === filename || f.endsWith(`-${filename}`))) {
-          fs.unlinkSync(path.join(uploadDir, f));
-          logger.info(`Local file removed: ${f}`);
+        for (const localFile of fs.readdirSync(uploadDir).filter(entry => entry === filename || entry.endsWith(`-${filename}`))) {
+          fs.unlinkSync(path.join(uploadDir, localFile));
+          logger.info(`Local file removed: ${localFile}`);
         }
       } catch { /* non-critical */ }
 
@@ -434,7 +487,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   // ── GET /health ───────────────────────────────────────────────────────────
   router.get('/health', (_req, res) => {
-    res.json({ status: 'ok', uploadDir });
+    res.json({ status: 'ok' });
   });
 
   return router;

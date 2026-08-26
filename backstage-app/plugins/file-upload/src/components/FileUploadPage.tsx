@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type DragEvent } from 'react';
 import {
   Button,
   CircularProgress,
@@ -31,7 +31,7 @@ import FolderIcon from '@material-ui/icons/Folder';
 import InsertDriveFileIcon from '@material-ui/icons/InsertDriveFile';
 import StorageIcon from '@material-ui/icons/Storage';
 import { Page, Header, Content } from '@backstage/core-components';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import { discoveryApiRef, fetchApiRef, useApi } from '@backstage/core-plugin-api';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -158,8 +158,17 @@ interface RepoItem {
 
 export const FileUploadPage = () => {
   const classes = useStyles();
-  const configApi = useApi(configApiRef);
-  const backendUrl = configApi.getString('backend.baseUrl');
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const [pluginBaseUrl, setPluginBaseUrl] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    discoveryApi.getBaseUrl('file-upload').then(url => {
+      if (active) setPluginBaseUrl(url);
+    });
+    return () => { active = false; };
+  }, [discoveryApi]);
 
   // ── Repo selector ────────────────────────────────────────────────────────
   const [repos, setRepos] = useState<RepoInfo[]>([]);
@@ -182,11 +191,12 @@ export const FileUploadPage = () => {
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchItems = useCallback(async (repo: string, path: string) => {
-    if (!repo) return;
+    if (!repo || !pluginBaseUrl) return;
     setLoadingList(true);
     try {
-      const url = `${backendUrl}/api/file-upload/list?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(path)}`;
-      const res  = await fetch(url);
+      const url = `${pluginBaseUrl}/list?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(path)}`;
+      const res  = await fetchApi.fetch(url);
+      if (!res.ok) throw new Error(`List request failed: HTTP ${res.status}`);
       const data = await res.json();
       setItems(data.items ?? []);
     } catch {
@@ -194,12 +204,14 @@ export const FileUploadPage = () => {
     } finally {
       setLoadingList(false);
     }
-  }, [backendUrl]);
+  }, [fetchApi, pluginBaseUrl]);
 
   const fetchRepos = useCallback(async () => {
     setLoadingRepos(true);
     try {
-      const res  = await fetch(`${backendUrl}/api/file-upload/repos`);
+      if (!pluginBaseUrl) return;
+      const res  = await fetchApi.fetch(`${pluginBaseUrl}/repos`);
+      if (!res.ok) throw new Error(`Repository request failed: HTTP ${res.status}`);
       const data = await res.json();
       const list: RepoInfo[] = data.repos ?? [];
       setRepos(list);
@@ -211,7 +223,7 @@ export const FileUploadPage = () => {
       setLoadingRepos(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  }, [fetchApi, pluginBaseUrl]);
 
   useEffect(() => { fetchRepos(); }, [fetchRepos]);
 
@@ -240,7 +252,7 @@ export const FileUploadPage = () => {
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleFile = (f: File) => { setFile(f); setState('idle'); setResult(null); };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const dropped = e.dataTransfer.files[0];
@@ -258,9 +270,9 @@ export const FileUploadPage = () => {
     formData.append('uploadPath', currentPath);   // current directory
 
     try {
-      const response = await fetch(`${backendUrl}/api/file-upload/upload`, { method: 'POST', body: formData });
+      const response = await fetchApi.fetch(`${pluginBaseUrl}/upload`, { method: 'POST', body: formData });
       const data: UploadResult = await response.json();
-      setState(response.ok || response.status === 207 ? 'success' : 'error');
+      setState(response.ok ? 'success' : 'error');
       setResult(data);
       if (response.ok) {
         fetchItems(selectedRepo, currentPath);
@@ -277,11 +289,13 @@ export const FileUploadPage = () => {
   };
 
   const handleDelete = async (item: RepoItem) => {
+    // Native confirmation prevents accidental destructive actions.
+    // eslint-disable-next-line no-alert
     if (!window.confirm(`Delete "${item.path}" from "${selectedRepo}"?`)) return;
     setDeletingFile(item.path);
     try {
-      const res = await fetch(
-        `${backendUrl}/api/file-upload/delete?path=${encodeURIComponent(item.path)}&repo=${encodeURIComponent(selectedRepo)}`,
+      const res = await fetchApi.fetch(
+        `${pluginBaseUrl}/delete?path=${encodeURIComponent(item.path)}&repo=${encodeURIComponent(selectedRepo)}`,
         { method: 'DELETE' },
       );
       if (res.ok) fetchItems(selectedRepo, currentPath);
@@ -293,6 +307,12 @@ export const FileUploadPage = () => {
   const LFS_EXTENSIONS = ['.ear', '.exe', '.war', '.jar', '.zip'];
   const willUseLfs = (f: File) =>
     f.size > 100 * 1024 * 1024 || LFS_EXTENSIONS.includes(f.name.substring(f.name.lastIndexOf('.')).toLowerCase());
+
+  const formatSize = (item: RepoItem) => {
+    if (item.type === 'dir') return '—';
+    if (item.size > 1024 * 1024) return `${(item.size / 1024 / 1024).toFixed(1)} MB`;
+    return `${(item.size / 1024).toFixed(1)} KB`;
+  };
 
   const noRepo = !selectedRepo;
 
@@ -425,7 +445,12 @@ export const FileUploadPage = () => {
                           {item.type === 'dir' ? (
                             <span
                               style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                              role="button"
+                              tabIndex={0}
                               onClick={() => navigateTo(item.path)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter' || event.key === ' ') navigateTo(item.path);
+                              }}
                             >
                               <FolderIcon fontSize="small" style={{ color: '#f0a500' }} />
                               <span style={{ fontWeight: 500 }}>{item.name}/</span>
@@ -440,11 +465,7 @@ export const FileUploadPage = () => {
                           )}
                         </TableCell>
                         <TableCell align="right">
-                          {item.type === 'dir'
-                            ? '—'
-                            : item.size > 1024 * 1024
-                              ? `${(item.size / 1024 / 1024).toFixed(1)} MB`
-                              : `${(item.size / 1024).toFixed(1)} KB`}
+                          {formatSize(item)}
                         </TableCell>
                         <TableCell align="center">
                           {item.type === 'file' && (
@@ -482,7 +503,12 @@ export const FileUploadPage = () => {
               <div className={classes.uploadSection}>
                 <div
                   className={`${classes.dropZone} ${dragging ? classes.dropZoneActive : ''} ${noRepo ? classes.dropZoneDisabled : ''}`}
+                  role="button"
+                  tabIndex={noRepo ? -1 : 0}
                   onClick={() => !noRepo && inputRef.current?.click()}
+                  onKeyDown={event => {
+                    if (!noRepo && (event.key === 'Enter' || event.key === ' ')) inputRef.current?.click();
+                  }}
                   onDrop={noRepo ? undefined : handleDrop}
                   onDragOver={noRepo ? undefined : e => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}

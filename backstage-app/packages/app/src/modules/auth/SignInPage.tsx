@@ -2,9 +2,8 @@ import { SignInPageBlueprint } from '@backstage/plugin-app-react';
 import { oidcAuthApiRef } from './oidcApi';
 
 /**
- * Página de sign-in: Keycloak (OIDC) + Guest.
- * Guest continua disponível para desenvolvimento local sem Keycloak;
- * quando não fizer mais sentido, basta remover da lista de providers.
+ * Página de sign-in corporativa. O provider Guest continua configurado apenas
+ * no backend de desenvolvimento e não é oferecido pela UI compartilhada.
  */
 export const signInPage = SignInPageBlueprint.make({
   params: {
@@ -20,7 +19,6 @@ export const signInPage = SignInPageBlueprint.make({
               message: 'Entrar com sua conta corporativa (Keycloak)',
               apiRef: oidcAuthApiRef,
             },
-            'guest',
           ]}
         />
       );

@@ -14,16 +14,14 @@ export const fileUploadPlugin = createBackendPlugin({
     env.registerInit({
       deps: {
         httpRouter: coreServices.httpRouter,
+        httpAuth: coreServices.httpAuth,
+        userInfo: coreServices.userInfo,
         config: coreServices.rootConfig,
         logger: coreServices.logger,
       },
-      async init({ httpRouter, config, logger }) {
-        const router = await createRouter({ config, logger });
+      async init({ httpRouter, httpAuth, userInfo, config, logger }) {
+        const router = await createRouter({ config, logger, httpAuth, userInfo });
         httpRouter.use(router);
-        httpRouter.addAuthPolicy({ path: '/repos', allow: 'unauthenticated' });
-        httpRouter.addAuthPolicy({ path: '/upload', allow: 'unauthenticated' });
-        httpRouter.addAuthPolicy({ path: '/list', allow: 'unauthenticated' });
-        httpRouter.addAuthPolicy({ path: '/delete', allow: 'unauthenticated' });
         httpRouter.addAuthPolicy({ path: '/health', allow: 'unauthenticated' });
       },
     });

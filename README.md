@@ -181,7 +181,7 @@ Acesse: **http://localhost:3000**
 2. Arraste um arquivo binário para a área de drop ou clique para selecionar
 3. Clique em **"Upload & Push to GitHub"**
 4. O sistema mostra:
-   - O caminho local onde o arquivo foi salvo
+   - O resultado da publicação (o arquivo temporário local é removido)
    - A URL do arquivo no GitHub
 
 ---
@@ -217,13 +217,12 @@ curl -X POST http://localhost:7007/api/file-upload/upload \
 }
 ```
 
-**Resposta parcial (207 — arquivo salvo, push falhou):**
+**Falha no upstream (502 — publicação no GitHub falhou):**
 
 ```json
 {
-  "message": "File saved locally but GitHub push failed.",
-  "localPath": "/home/usuario/data/uploads/1715000000000-arquivo.bin",
-  "error": "mensagem de erro do GitHub"
+  "message": "GitHub upload failed.",
+  "error": "The artifact could not be published. Check the backend logs."
 }
 ```
 
