@@ -98,6 +98,12 @@ jobs:
               missing=1
               ;;
           esac
+          case "$BACKSTAGE_GH_APP_ID" in
+            ''|*[!0-9]*)
+              echo "::error::BACKSTAGE_GH_APP_ID deve conter apenas o App ID numérico do GitHub App (não use Client ID, Client Secret ou nome do App)"
+              missing=1
+              ;;
+          esac
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
