@@ -54,6 +54,7 @@ jobs:
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB:       ${{ secrets.POSTGRES_DB || secrets.POSTGRES_USER }}
+          POSTGRES_HOST:     ${{ secrets.POSTGRES_HOST }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
           KC_CATALOG_CLIENT_SECRET: ${{ secrets.KEYCLOAK_CATALOG_CLIENT_SECRET }}
           SESSION_SECRET:    ${{ secrets.AUTH_SESSION_SECRET }}
@@ -127,6 +128,7 @@ jobs:
           POSTGRES_USER:     ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB:       ${{ secrets.POSTGRES_DB || secrets.POSTGRES_USER }}
+          POSTGRES_HOST:     ${{ secrets.POSTGRES_HOST }}
           MINIO_USER:        ${{ secrets.MINIO_ROOT_USER }}
           MINIO_PASSWORD:    ${{ secrets.MINIO_ROOT_PASSWORD }}
           KC_CLIENT_SECRET:  ${{ secrets.KEYCLOAK_CLIENT_SECRET || secrets.KC_CLIENT_SECRET }}
@@ -158,8 +160,6 @@ jobs:
           BACKSTAGE_IMAGE=${{ inputs.image-tag }}
           BACKSTAGE_CONTAINER_NAME=backstage
           BACKSTAGE_PORT=7007
-          POSTGRES_IMAGE=postgres:15
-          POSTGRES_CONTAINER_NAME=backstage-db
           MINIO_IMAGE=minio/minio:latest
           MINIO_MC_IMAGE=minio/mc:latest
           MINIO_CONTAINER_NAME=backstage-minio
@@ -178,6 +178,8 @@ jobs:
           POSTGRES_USER=${POSTGRES_USER}
           POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           POSTGRES_DB=${POSTGRES_DB:-$POSTGRES_USER}
+          POSTGRES_HOST=${POSTGRES_HOST:-platform-postgres}
+          POSTGRES_PORT=5432
           MINIO_ROOT_USER=${MINIO_USER:-minioadmin}
           MINIO_ROOT_PASSWORD=${MINIO_PASSWORD:-minioadmin}
           KEYCLOAK_CLIENT_ID=backstage
@@ -197,6 +199,7 @@ jobs:
           mkdir -p "${{ inputs.deploy-dir }}"
           cp deploy/docker-compose.yml deploy/app-config.deploy.yaml .env "${{ inputs.deploy-dir }}/"
           docker network inspect backstage-auth >/dev/null 2>&1 || docker network create backstage-auth
+          docker network inspect platform-data >/dev/null 2>&1 || { echo "platform-database deve ser implantado primeiro" >&2; exit 1; }
           cd "${{ inputs.deploy-dir }}"
           docker compose config --quiet
           docker compose up -d --remove-orphans
