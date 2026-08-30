@@ -1,6 +1,6 @@
 app:
   # Should be the same as backend.baseUrl when using the `app-backend` plugin.
-  # Set APP_BASE_URL env var to your server's public URL, e.g. http://192.168.1.10:7007
+  # Set APP_BASE_URL env var to your server's public URL, e.g. http://192.168.1.250:7007
   baseUrl: ${APP_BASE_URL}
 
 backend:

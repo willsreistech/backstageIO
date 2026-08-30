@@ -7,8 +7,8 @@ services:
       - "7007:7007"
     environment:
       # >>> TROQUE pelo IP/host que o navegador vai acessar (NAO use localhost se
-      #     for acessar de outra máquina). Ex.: http://192.168.1.10:7007
-      APP_BASE_URL: http://192.168.56.10:7007
+      #     for acessar de outra máquina). Ex.: http://192.168.1.250:7007
+      APP_BASE_URL: http://192.168.1.250:7007
 
       # Postgres (serviço abaixo)
       POSTGRES_HOST: postgres

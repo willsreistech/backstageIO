@@ -94,7 +94,7 @@ jobs:
           case "$APP_BASE_URL" in
             http://*:*|https://*:*) ;;
             *)
-              echo "::error::APP_BASE_URL deve ser uma URL absoluta com protocolo e porta (ex.: http://192.168.1.4:7007)"
+              echo "::error::APP_BASE_URL deve ser uma URL absoluta com protocolo e porta (ex.: http://192.168.1.250:7007)"
               missing=1
               ;;
           esac
