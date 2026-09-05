@@ -210,6 +210,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       // Installation tokens use the installation endpoint. Keep the user-repo
       // fallback for local configurations that still provide a user token.
       let allPages;
+      let usedInstallationEndpoint = true;
       try {
         allPages = await octokit.paginate(
           octokit.apps.listReposAccessibleToInstallation,
@@ -217,6 +218,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         );
       } catch (error: any) {
         if (error.status !== 403 && error.status !== 404) throw error;
+        usedInstallationEndpoint = false;
         allPages = await octokit.paginate(octokit.repos.listForAuthenticatedUser, {
           per_page: 100,
           sort: 'updated',
@@ -229,7 +231,9 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const repos = allPages
         .filter((r: any) =>
           r.owner?.login?.toLowerCase() === owner.toLowerCase() &&
-          (r.permissions?.push === true || r.permissions?.admin === true) &&
+          // GitHub App installation tokens advertise repository access through
+          // the installation itself, while these user-role flags remain false.
+          (usedInstallationEndpoint || r.permissions?.push === true || r.permissions?.admin === true) &&
           allowlist.has(r.name),
         )
         .map((r: any) => ({
