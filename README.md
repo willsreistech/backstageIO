@@ -136,6 +136,9 @@ GITHUB_OWNER=willsreistech
 # Nome do repositório de destino (deve existir)
 GITHUB_REPO=nome-do-repositorio
 
+# Repositórios disponíveis no upload, separados por vírgula
+GITHUB_ALLOWED_REPOS=backstageIO,k9,keycloakwsr,platform-database,vagrant
+
 # Branch de destino
 GITHUB_BRANCH=main
 ```
@@ -433,6 +436,7 @@ fileUpload:
 | `BACKSTAGE_GH_APP_PRIVATE_KEY_B64` | ✅ | Chave privada PEM codificada em Base64 |
 | `GITHUB_OWNER` | ✅ | Usuário ou organização donos do repo |
 | `GITHUB_REPO` | ✅ | Nome do repositório de destino |
+| `GITHUB_ALLOWED_REPOS` | ✅ | Nomes dos repositórios permitidos, separados por vírgula |
 | `GITHUB_BRANCH` | ✅ | Branch de destino (ex: `main`) |
 
 > O arquivo `.env` **já está no `.gitignore`**. Nunca commite tokens.

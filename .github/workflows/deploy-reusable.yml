@@ -29,6 +29,11 @@ on:
         description: Tag da imagem Docker a construir (ex. backstage:latest)
         required: true
         type: string
+      allowed-repos:
+        description: Repositórios habilitados no file-upload, separados por vírgula
+        required: false
+        default: backstageIO,k9,keycloakwsr,platform-database,vagrant
+        type: string
 
 jobs:
   deploy:
@@ -45,7 +50,7 @@ jobs:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
-          GHUB_ALLOWED_REPOS: ${{ secrets.GHUB_ALLOWED_REPOS || secrets.GHUB_REPO }}
+          GHUB_ALLOWED_REPOS: ${{ inputs.allowed-repos }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}
@@ -119,7 +124,7 @@ jobs:
           APP_BASE_URL:      ${{ secrets.APP_BASE_URL }}
           GHUB_OWNER:        ${{ secrets.GHUB_OWNER }}
           GHUB_REPO:         ${{ secrets.GHUB_REPO }}
-          GHUB_ALLOWED_REPOS: ${{ secrets.GHUB_ALLOWED_REPOS || secrets.GHUB_REPO }}
+          GHUB_ALLOWED_REPOS: ${{ inputs.allowed-repos }}
           GHUB_BRANCH:       ${{ secrets.GHUB_BRANCH }}
           BACKSTAGE_GH_APP_ID:     ${{ secrets.BACKSTAGE_GH_APP_ID }}
           BACKSTAGE_GH_APP_CLIENT_ID:     ${{ secrets.BACKSTAGE_GH_APP_CLIENT_ID }}

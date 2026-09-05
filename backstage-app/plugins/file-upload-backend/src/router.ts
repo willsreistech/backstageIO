@@ -82,10 +82,38 @@ interface GitHubConfig {
   credentialsProvider: GithubCredentialsProvider;
 }
 
+function normalizeConfiguredRepo(value: string, owner: string): string {
+  const trimmed = value.trim();
+  if (/^[A-Za-z0-9_.-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const parts = url.pathname.replace(/\/$/, '').split('/').filter(Boolean);
+    const repo = parts[1]?.replace(/\.git$/, '');
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.hostname.toLowerCase() !== 'github.com' ||
+      parts.length !== 2 ||
+      parts[0].toLowerCase() !== owner.toLowerCase() ||
+      !repo ||
+      !/^[A-Za-z0-9_.-]+$/.test(repo)
+    ) {
+      throw new Error('invalid GitHub repository URL');
+    }
+    return repo;
+  } catch {
+    throw new Error(
+      `Invalid repository reference "${value}"; use a repository name or https://github.com/${owner}/<repo>`,
+    );
+  }
+}
+
 function getGitHubConfig(config: Config): GitHubConfig {
   const integrations = ScmIntegrations.fromConfig(config);
   const owner     = config.getString('fileUpload.github.owner');
-  const repo      = config.getString('fileUpload.github.repo');
+  const repo      = normalizeConfiguredRepo(config.getString('fileUpload.github.repo'), owner);
   const branch    = config.getOptionalString('fileUpload.github.branch') ?? 'main';
   const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? 'uploads';
   const credentialsProvider = DefaultGithubCredentialsProvider.fromIntegrations(integrations);
@@ -132,9 +160,15 @@ function isWithinDirectory(filePath: string, directory: string): boolean {
   return filePath === directory || filePath.startsWith(`${directory}/`);
 }
 
-function getAllowedRepos(config: Config, fallback: string): string[] {
+function getAllowedRepos(config: Config, fallback: string, owner: string): string[] {
   const value = config.getOptionalString('fileUpload.github.allowedRepos');
-  return value ? value.split(',').map(repo => repo.trim()).filter(Boolean) : [fallback];
+  return value
+    ? value
+        .split(',')
+        .map(repo => repo.trim())
+        .filter(Boolean)
+        .map(repo => normalizeConfiguredRepo(repo, owner))
+    : [fallback];
 }
 
 export async function createRouter(options: RouterOptions): Promise<Router> {
@@ -192,7 +226,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     if (!/^[A-Za-z0-9_.-]+$/.test(repo)) {
       throw new InputError('Invalid repository name.');
     }
-    const allowlist = getAllowedRepos(config, cfg.repo);
+    const allowlist = getAllowedRepos(config, cfg.repo, cfg.owner);
     if (!allowlist.includes(repo)) {
       throw new NotAllowedError(`Repository ${repo} is not approved for artifact uploads.`);
     }
@@ -226,8 +260,10 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         });
       }
 
-      // Keep only repos belonging to the configured owner AND where the token has write access
-      const allowlist = new Set(getAllowedRepos(config, cfg.repo));
+      // Keep only repositories from the configured owner and explicit allowlist.
+      // User tokens must also advertise push access; installation tokens carry
+      // their permissions at the installation level instead.
+      const allowlist = new Set(getAllowedRepos(config, cfg.repo, cfg.owner));
       const repos = allPages
         .filter((r: any) =>
           r.owner?.login?.toLowerCase() === owner.toLowerCase() &&
@@ -436,8 +472,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   // ── DELETE /delete ─────────────────────────────────────────────────────────
-  // Accepts the full file path via ?path= query param so any file in the repo
-  // can be deleted, not just files inside targetDir.
+  // Accepts a full file path via ?path=, restricted to targetDir.
   router.delete('/delete', requirePublisher, async (req: Request, res: Response) => {
     const filePath = req.query.path as string | undefined;
     if (!filePath) {
