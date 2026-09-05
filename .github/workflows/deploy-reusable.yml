@@ -207,7 +207,7 @@ jobs:
       - name: Health check
         run: |
           for attempt in $(seq 1 80); do
-            if curl -fsS http://localhost:7007 >/dev/null 2>&1; then
+            if curl -fsS http://localhost:7007/.backstage/health/v1/readiness >/dev/null 2>&1; then
               docker compose --env-file "${{ inputs.deploy-dir }}/.env" -f "${{ inputs.deploy-dir }}/docker-compose.yml" ps
               exit 0
             fi
