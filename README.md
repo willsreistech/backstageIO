@@ -214,8 +214,8 @@ curl -X POST http://localhost:7007/api/file-upload/upload \
     "owner": "seu-usuario",
     "repo": "nome-repo",
     "branch": "main",
-    "path": "uploads/1715000000000-arquivo.bin",
-    "url": "https://github.com/seu-usuario/nome-repo/blob/main/uploads/1715000000000-arquivo.bin"
+    "path": "releases/arquivo.bin",
+    "url": "https://github.com/seu-usuario/nome-repo/blob/main/releases/arquivo.bin"
   }
 }
 ```
@@ -302,7 +302,7 @@ const base64Content = fileContent.toString('base64');
 
 await octokit.repos.createOrUpdateFileContents({
   owner, repo, branch,
-  path: `uploads/${req.file.filename}`,
+  path: remotePath, // raiz ou diretório selecionado na interface
   message: `chore: upload binary ${req.file.filename}`,
   content: base64Content,
   ...(sha ? { sha } : {}),   // sha necessário para atualizar um arquivo existente
@@ -400,7 +400,6 @@ fileUpload:
     owner: ${GITHUB_OWNER}
     repo: ${GITHUB_REPO}
     branch: ${GITHUB_BRANCH}
-    targetDir: uploads
 ```
 
 ---
@@ -410,10 +409,11 @@ fileUpload:
 ```
 1. Usuário acessa http://localhost:3000/file-upload
 2. React carrega FileUploadPage.tsx
-3. Usuário seleciona/arrasta arquivo binário
-4. Clica em "Upload & Push to GitHub"
-5. Browser envia POST multipart/form-data para http://localhost:7007/api/file-upload/upload
-6. Backend (router.ts):
+3. Usuário seleciona um repositório e navega até o diretório desejado
+4. Usuário seleciona/arrasta arquivo binário
+5. Clica em "Upload & Push to GitHub"
+6. Browser envia POST multipart/form-data para http://localhost:7007/api/file-upload/upload
+7. Backend (router.ts):
    a. multer intercepta o upload e salva em ~/data/uploads/<timestamp>-<nome>
    b. Lê o arquivo do disco como Buffer
    c. Converte para Base64
@@ -421,7 +421,7 @@ fileUpload:
    e. Verifica se o arquivo já existe no repo (para obter o sha)
    f. Chama octokit.repos.createOrUpdateFileContents()
    g. Retorna JSON com localPath e URL do GitHub
-7. Frontend exibe o resultado com links clicáveis
+8. Frontend exibe o resultado com links clicáveis
 ```
 
 ---

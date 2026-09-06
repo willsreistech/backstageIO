@@ -115,7 +115,7 @@ function getGitHubConfig(config: Config): GitHubConfig {
   const owner     = config.getString('fileUpload.github.owner');
   const repo      = normalizeConfiguredRepo(config.getString('fileUpload.github.repo'), owner);
   const branch    = config.getOptionalString('fileUpload.github.branch') ?? 'main';
-  const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? 'uploads';
+  const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? '';
   const credentialsProvider = DefaultGithubCredentialsProvider.fromIntegrations(integrations);
   return { owner, repo, branch, targetDir, credentialsProvider };
 }
@@ -156,8 +156,9 @@ function normalizeRepoPath(value: string): string {
   return normalized;
 }
 
-function isWithinDirectory(filePath: string, directory: string): boolean {
-  return filePath === directory || filePath.startsWith(`${directory}/`);
+function normalizeRepoDirectory(value: string): string {
+  if (!value.trim()) return '';
+  return normalizeRepoPath(value);
 }
 
 function getAllowedRepos(config: Config, fallback: string, owner: string): string[] {
@@ -304,15 +305,12 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
 
-      const targetDir = normalizeRepoPath(cfg.targetDir);
-      const requestedPath = (req.body?.uploadPath as string) || targetDir;
-      const uploadPath = normalizeRepoPath(requestedPath);
-      if (!isWithinDirectory(uploadPath, targetDir)) {
-        res.status(400).json({ error: `Uploads must be placed inside ${targetDir}.` });
-        return;
-      }
+      const requestedPath = typeof req.body?.uploadPath === 'string'
+        ? req.body.uploadPath
+        : cfg.targetDir;
+      const uploadPath = normalizeRepoDirectory(requestedPath);
       const safeName   = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const remotePath = `${uploadPath}/${safeName}`;
+      const remotePath = uploadPath ? `${uploadPath}/${safeName}` : safeName;
       const fileSize   = req.file.size;
 
       /** Fetch the SHA of an existing file in the repo (undefined if not found). */
@@ -429,7 +427,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg = getGitHubConfig(config);
       const repo    = getAllowedRepo(req.query.repo, cfg);
-      const dirPath = (req.query.path as string) ?? '';
+      const dirPath = normalizeRepoDirectory((req.query.path as string) ?? '');
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);
       const octokit = new Octokit({ auth: credentials.token });
@@ -472,7 +470,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   // ── DELETE /delete ─────────────────────────────────────────────────────────
-  // Accepts a full file path via ?path=, restricted to targetDir.
+  // Accepts a full file path via ?path= anywhere in the selected repository.
   router.delete('/delete', requirePublisher, async (req: Request, res: Response) => {
     const filePath = req.query.path as string | undefined;
     if (!filePath) {
@@ -482,11 +480,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     try {
       const cfg = getGitHubConfig(config);
       const normalizedPath = normalizeRepoPath(filePath);
-      const targetDir = normalizeRepoPath(cfg.targetDir);
-      if (!isWithinDirectory(normalizedPath, targetDir)) {
-        res.status(400).json({ error: `Only files inside ${targetDir} can be deleted.` });
-        return;
-      }
       const repo   = getAllowedRepo(req.query.repo, cfg);
       const { owner, branch } = cfg;
       const credentials = await getGitHubCredentials(cfg, repo);

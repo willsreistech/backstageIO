@@ -73,7 +73,6 @@ fileUpload:
     owner: ${GITHUB_OWNER}   # GitHub user or organization name
     repo: ${GITHUB_REPO}     # Repository name (must exist)
     branch: ${GITHUB_BRANCH} # Branch to push to (default: main)
-    targetDir: uploads        # Sub-directory inside the repo
     # Lista separada por vírgulas. Nunca permita todos os repositórios
     # acessíveis ao GitHub App implicitamente.
     allowedRepos: ${GITHUB_ALLOWED_REPOS}

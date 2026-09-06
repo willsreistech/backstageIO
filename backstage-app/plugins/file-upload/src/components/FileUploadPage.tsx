@@ -173,7 +173,7 @@ export const FileUploadPage = () => {
   // ── Repo selector ────────────────────────────────────────────────────────
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [selectedRepo, setSelectedRepo] = useState('');
-  const [targetDir, setTargetDir] = useState('uploads');
+  const [targetDir, setTargetDir] = useState('');
   const [loadingRepos, setLoadingRepos] = useState(false);
 
   // ── Directory browser ─────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ export const FileUploadPage = () => {
       const data = await res.json();
       const list: RepoInfo[] = data.repos ?? [];
       setRepos(list);
-      if (typeof data.targetDir === 'string' && data.targetDir) setTargetDir(data.targetDir);
+      setTargetDir(typeof data.targetDir === 'string' ? data.targetDir : '');
       if (list.length > 0 && !selectedRepo) setSelectedRepo(list[0].name);
     } catch {
       setRepos([]);

@@ -321,7 +321,7 @@ function getGitHubConfig(config: Config) {
   const owner     = config.getString('fileUpload.github.owner');
   const repo      = config.getString('fileUpload.github.repo');
   const branch    = config.getOptionalString('fileUpload.github.branch') ?? 'main';
-  const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? 'uploads';
+  const targetDir = config.getOptionalString('fileUpload.github.targetDir') ?? '';
   const credentialsProvider = DefaultGithubCredentialsProvider.fromIntegrations(integrations);
   return { owner, repo, branch, targetDir, credentialsProvider };
 }
@@ -839,7 +839,6 @@ fileUpload:
     owner: ${GITHUB_OWNER}    # Usuário ou organização GitHub
     repo:  ${GITHUB_REPO}     # Nome do repositório padrão
     branch: ${GITHUB_BRANCH}  # Branch alvo (padrão: main)
-    targetDir: uploads         # Subdiretório padrão dentro do repo
   lfs:
     # Arquivos maiores que este valor (MB) vão automaticamente via Git LFS
     sizeThresholdMb: 100
@@ -901,7 +900,7 @@ A configuração completa relevante para o plugin está descrita na seção [7 �
 | `fileUpload.github.owner` | string | Dono dos repositórios (user/org) |
 | `fileUpload.github.repo` | string | Repo padrão (fallback quando nenhum selecionado) |
 | `fileUpload.github.branch` | string | Branch alvo para commits |
-| `fileUpload.github.targetDir` | string | Pasta padrão dentro do repo (legado) |
+| `fileUpload.github.targetDir` | string | Diretório inicial opcional; a raiz é usada por padrão |
 | `fileUpload.lfs.sizeThresholdMb` | number | Tamanho em MB que ativa LFS (padrão: 100) |
 | `fileUpload.lfs.extensions` | string[] | Extensões que sempre usam LFS |
 
@@ -1025,7 +1024,7 @@ git push
 
 ### Comportamento do seletor de repositório
 - Lista apenas repos do `GITHUB_OWNER` configurado
-- Filtra apenas repos onde o token tem `push` ou `admin`
+- Para GitHub Apps, lista repositórios acessíveis pela instalação e pela allowlist
 - Mostra 🔒 para repos privados e 📂 para públicos
 
 ### Comportamento do navegador de diretórios
