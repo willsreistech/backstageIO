@@ -3984,18 +3984,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@backstage/plugin-permission-backend-module-allow-all-policy@npm:^0.2.18":
-  version: 0.2.18
-  resolution: "@backstage/plugin-permission-backend-module-allow-all-policy@npm:0.2.18"
-  dependencies:
-    "@backstage/backend-plugin-api": "npm:^1.9.0"
-    "@backstage/plugin-auth-node": "npm:^0.7.0"
-    "@backstage/plugin-permission-common": "npm:^0.9.8"
-    "@backstage/plugin-permission-node": "npm:^0.10.12"
-  checksum: 10c0/48d4a4eabe9ec8207ec3fdd7613103d31e0d0edcd2fbd0a052ff35388a0fb437cff6eaa79853f42ef189edcc5e30c34380ffcc2d046c8ae89579d144f514ebfd
-  languageName: node
-  linkType: hard
-
 "@backstage/plugin-permission-backend@npm:^0.7.11":
   version: 0.7.11
   resolution: "@backstage/plugin-permission-backend@npm:0.7.11"
@@ -14430,6 +14418,7 @@ __metadata:
   dependencies:
     "@backstage-community/plugin-catalog-backend-module-keycloak": "npm:^3.21.0"
     "@backstage/backend-defaults": "npm:^0.17.0"
+    "@backstage/backend-plugin-api": "npm:^1.9.0"
     "@backstage/cli": "npm:^0.36.1"
     "@backstage/config": "npm:^1.3.7"
     "@backstage/plugin-app-backend": "npm:^0.5.13"
@@ -14442,17 +14431,18 @@ __metadata:
     "@backstage/plugin-catalog-backend-module-github": "npm:^0.13.1"
     "@backstage/plugin-catalog-backend-module-logs": "npm:^0.1.21"
     "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "npm:^0.2.19"
+    "@backstage/plugin-catalog-common": "npm:^1.1.9"
     "@backstage/plugin-kubernetes-backend": "npm:^0.21.3"
     "@backstage/plugin-mcp-actions-backend": "npm:^0.1.12"
     "@backstage/plugin-notifications-backend": "npm:^0.6.4"
     "@backstage/plugin-permission-backend": "npm:^0.7.11"
-    "@backstage/plugin-permission-backend-module-allow-all-policy": "npm:^0.2.18"
     "@backstage/plugin-permission-common": "npm:^0.9.8"
     "@backstage/plugin-permission-node": "npm:^0.10.12"
     "@backstage/plugin-proxy-backend": "npm:^0.6.12"
     "@backstage/plugin-scaffolder-backend": "npm:^3.4.0"
     "@backstage/plugin-scaffolder-backend-module-github": "npm:^0.9.8"
     "@backstage/plugin-scaffolder-backend-module-notifications": "npm:^0.1.21"
+    "@backstage/plugin-scaffolder-common": "npm:^2.1.0"
     "@backstage/plugin-search-backend": "npm:^2.1.1"
     "@backstage/plugin-search-backend-module-catalog": "npm:^0.3.14"
     "@backstage/plugin-search-backend-module-pg": "npm:^0.5.54"

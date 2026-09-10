@@ -187,7 +187,31 @@ Acesse: **http://localhost:3000**
 4. Edite o arquivo localmente
 5. No mesmo diretório, selecione o arquivo editado e clique em **"Upload or update"**
 
-O nome precisa permanecer igual para atualizar o documento existente. O acesso é autorizado pelos grupos definidos em `fileUpload.allowedGroups`; o token da GitHub App nunca é enviado ao navegador.
+O nome precisa permanecer igual para atualizar o documento existente. O acesso é
+autorizado pelos grupos sincronizados do Keycloak; o token da GitHub App nunca é
+enviado ao navegador.
+
+### RBAC do Keycloak
+
+As permissões são obtidas das relações `User -> Group` que o provider Keycloak
+sincroniza no catálogo. Depois de alterar os grupos de uma pessoa no Keycloak,
+aguarde até cinco minutos pela sincronização e peça que ela saia e entre novamente
+para renovar a identidade do Backstage.
+
+| Grupo | Permissões |
+|---|---|
+| `backstage-users` | Ler catálogo, TechDocs e busca; consultar status dos clusters |
+| `artifact-viewers` | Navegar por repositórios e arquivos |
+| `artifact-downloaders` | Navegar e baixar arquivos |
+| `artifact-uploaders` | Navegar e enviar/atualizar arquivos; não excluir |
+| `cluster-creators` | Consultar status e executar `setup-cluster.yml` |
+| `cluster-deleters` | Consultar status e executar `teardown-cluster.yml` |
+| `platform-admin` | Acesso total |
+| `artifact-publisher` | Grupo legado com acesso completo aos artefatos durante a migração |
+
+Uma conta sincronizada sem nenhum desses grupos consegue autenticar, mas suas
+operações permissionadas são negadas. Exclusão de artefatos fica limitada a
+`platform-admin` e ao grupo legado `artifact-publisher`.
 
 ---
 

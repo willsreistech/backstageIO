@@ -93,10 +93,26 @@ fileUpload:
     # Lista separada por vírgulas. Nunca permita todos os repositórios
     # acessíveis ao GitHub App implicitamente.
     allowedRepos: ${GITHUB_ALLOWED_REPOS}
-  # Grupos do catálogo autorizados a listar, baixar, publicar e remover arquivos.
-  allowedGroups:
-    - group:default/platform-admin
-    - group:default/artifact-publisher
+  # RBAC por operação. As relações User -> Group vêm do Keycloak via catálogo.
+  # `artifact-publisher` é legado e mantém acesso completo durante a migração.
+  access:
+    viewGroups:
+      - group:default/platform-admin
+      - group:default/artifact-publisher
+      - group:default/artifact-viewers
+      - group:default/artifact-downloaders
+      - group:default/artifact-uploaders
+    downloadGroups:
+      - group:default/platform-admin
+      - group:default/artifact-publisher
+      - group:default/artifact-downloaders
+    uploadGroups:
+      - group:default/platform-admin
+      - group:default/artifact-publisher
+      - group:default/artifact-uploaders
+    deleteGroups:
+      - group:default/platform-admin
+      - group:default/artifact-publisher
   maxFileSizeMb: 500
   lfs:
     # Files larger than this (MB) are automatically sent via Git LFS

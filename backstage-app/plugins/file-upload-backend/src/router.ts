@@ -258,25 +258,80 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   const router = Router();
   router.use(express.json());
 
-  const allowedGroups = new Set(
-    config.getOptionalStringArray('fileUpload.allowedGroups') ?? [
-      'group:default/platform-admin',
-      'group:default/artifact-publisher',
-    ],
-  );
+  type ArtifactAction = 'view' | 'download' | 'upload' | 'delete';
 
-  const requirePublisher = async (req: Request, _res: Response, next: express.NextFunction) => {
-    try {
-      const credentials = await httpAuth.credentials(req);
-      const info = await userInfo.getUserInfo(credentials);
-      if (!info.ownershipEntityRefs.some(ref => allowedGroups.has(ref))) {
-        throw new NotAllowedError('User is not allowed to manage artifacts.');
+  const adminGroup = 'group:default/platform-admin';
+  const legacyPublisherGroup = 'group:default/artifact-publisher';
+  const accessGroups: Record<ArtifactAction, Set<string>> = {
+    view: new Set(
+      config.getOptionalStringArray('fileUpload.access.viewGroups') ?? [
+        adminGroup,
+        legacyPublisherGroup,
+        'group:default/artifact-viewers',
+        'group:default/artifact-downloaders',
+        'group:default/artifact-uploaders',
+      ],
+    ),
+    download: new Set(
+      config.getOptionalStringArray('fileUpload.access.downloadGroups') ?? [
+        adminGroup,
+        legacyPublisherGroup,
+        'group:default/artifact-downloaders',
+      ],
+    ),
+    upload: new Set(
+      config.getOptionalStringArray('fileUpload.access.uploadGroups') ?? [
+        adminGroup,
+        legacyPublisherGroup,
+        'group:default/artifact-uploaders',
+      ],
+    ),
+    delete: new Set(
+      config.getOptionalStringArray('fileUpload.access.deleteGroups') ?? [
+        adminGroup,
+        legacyPublisherGroup,
+      ],
+    ),
+  };
+
+  const userGroups = async (req: Request): Promise<Set<string>> => {
+    const credentials = await httpAuth.credentials(req);
+    const info = await userInfo.getUserInfo(credentials);
+    return new Set(info.ownershipEntityRefs);
+  };
+
+  const can = (groups: Set<string>, action: ArtifactAction): boolean =>
+    [...accessGroups[action]].some(group => groups.has(group));
+
+  const requireArtifactAccess = (action: ArtifactAction) =>
+    async (req: Request, _res: Response, next: express.NextFunction) => {
+      try {
+        if (!can(await userGroups(req), action)) {
+          throw new NotAllowedError(
+            `User is not allowed to ${action} repository artifacts.`,
+          );
+        }
+        next();
+      } catch (error) {
+        next(error);
       }
-      next();
+    };
+
+  // Lets the frontend hide unavailable operations. The route is informational;
+  // every protected route below performs its own server-side authorization.
+  router.get('/permissions', async (req: Request, res: Response, next) => {
+    try {
+      const groups = await userGroups(req);
+      res.json({
+        view: can(groups, 'view'),
+        download: can(groups, 'download'),
+        upload: can(groups, 'upload'),
+        delete: can(groups, 'delete'),
+      });
     } catch (error) {
       next(error);
     }
-  };
+  });
 
   const getAllowedRepo = (value: unknown, cfg: GitHubConfig): string => {
     const repo = typeof value === 'string' && value ? value : cfg.repo;
@@ -291,7 +346,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   };
 
   // ── GET /repos ────────────────────────────────────────────────────────────
-  router.get('/repos', requirePublisher, async (_req: Request, res: Response) => {
+  router.get('/repos', requireArtifactAccess('view'), async (_req: Request, res: Response) => {
     try {
       const cfg = getGitHubConfig(config);
       const { owner } = cfg;
@@ -344,7 +399,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   });
 
   // ── POST /upload ──────────────────────────────────────────────────────────
-  router.post('/upload', requirePublisher, upload.single('file') as unknown as express.RequestHandler, async (req: Request, res: Response) => {
+  router.post('/upload', requireArtifactAccess('upload'), upload.single('file') as unknown as express.RequestHandler, async (req: Request, res: Response) => {
     if (!req.file) {
       res.status(400).json({ error: 'No file provided. Use form-field "file".' });
       return;
@@ -479,7 +534,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // ── GET /list ─────────────────────────────────────────────────────────────
   // Lists the contents (files + directories) of a specific path in the repo.
   // ?repo=X  ?path=  (empty = root)
-  router.get('/list', requirePublisher, async (req: Request, res: Response) => {
+  router.get('/list', requireArtifactAccess('view'), async (req: Request, res: Response) => {
     try {
       const cfg = getGitHubConfig(config);
       const repo    = getAllowedRepo(req.query.repo, cfg);
@@ -526,7 +581,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
   // ── GET /download ─────────────────────────────────────────────────────────
   // Proxies a private GitHub file to an authenticated Backstage user without
   // exposing the GitHub App token. Git LFS objects are resolved transparently.
-  router.get('/download', requirePublisher, async (req: Request, res: Response) => {
+  router.get('/download', requireArtifactAccess('download'), async (req: Request, res: Response) => {
     const requestedPath = req.query.path as string | undefined;
     if (!requestedPath) {
       res.status(400).json({ error: 'Missing required query param: path' });
@@ -639,7 +694,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
 
   // ── DELETE /delete ─────────────────────────────────────────────────────────
   // Accepts a full file path via ?path= anywhere in the selected repository.
-  router.delete('/delete', requirePublisher, async (req: Request, res: Response) => {
+  router.delete('/delete', requireArtifactAccess('delete'), async (req: Request, res: Response) => {
     const filePath = req.query.path as string | undefined;
     if (!filePath) {
       res.status(400).json({ error: 'Missing required query param: path' });

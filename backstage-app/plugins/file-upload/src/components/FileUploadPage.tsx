@@ -157,11 +157,19 @@ interface RepoItem {
   size: number;
 }
 
+interface ArtifactPermissions {
+  view: boolean;
+  download: boolean;
+  upload: boolean;
+  delete: boolean;
+}
+
 export const FileUploadPage = () => {
   const classes = useStyles();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
   const [pluginBaseUrl, setPluginBaseUrl] = useState('');
+  const [access, setAccess] = useState<ArtifactPermissions | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -170,6 +178,25 @@ export const FileUploadPage = () => {
     });
     return () => { active = false; };
   }, [discoveryApi]);
+
+  useEffect(() => {
+    if (!pluginBaseUrl) return undefined;
+    let active = true;
+    fetchApi.fetch(`${pluginBaseUrl}/permissions`)
+      .then(async response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<ArtifactPermissions>;
+      })
+      .then(permissions => {
+        if (active) setAccess(permissions);
+      })
+      .catch(() => {
+        if (active) {
+          setAccess({ view: false, download: false, upload: false, delete: false });
+        }
+      });
+    return () => { active = false; };
+  }, [fetchApi, pluginBaseUrl]);
 
   // ── Repo selector ────────────────────────────────────────────────────────
   const [repos, setRepos] = useState<RepoInfo[]>([]);
@@ -211,6 +238,7 @@ export const FileUploadPage = () => {
   }, [fetchApi, pluginBaseUrl]);
 
   const fetchRepos = useCallback(async () => {
+    if (!access?.view) return;
     setLoadingRepos(true);
     try {
       if (!pluginBaseUrl) return;
@@ -227,7 +255,7 @@ export const FileUploadPage = () => {
       setLoadingRepos(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchApi, pluginBaseUrl]);
+  }, [access?.view, fetchApi, pluginBaseUrl]);
 
   useEffect(() => { fetchRepos(); }, [fetchRepos]);
 
@@ -347,6 +375,22 @@ export const FileUploadPage = () => {
   };
 
   const noRepo = !selectedRepo;
+
+  if (access && !access.view) {
+    return (
+      <Page themeId="tool">
+        <Header
+          title="Repository Files"
+          subtitle="Access controlled by Keycloak groups"
+        />
+        <Content>
+          <Typography color="error">
+            Your account is not authorized to view repository artifacts.
+          </Typography>
+        </Content>
+      </Page>
+    );
+  }
 
   return (
     <Page themeId="tool">
@@ -505,33 +549,37 @@ export const FileUploadPage = () => {
                         <TableCell align="center">
                           {item.type === 'file' && (
                             <div className={classes.fileActions}>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="primary"
-                                startIcon={downloadingFile === item.path
-                                  ? <CircularProgress size={14} />
-                                  : <GetAppIcon />}
-                                onClick={() => handleDownload(item)}
-                                disabled={downloadingFile === item.path}
-                                aria-label={`Download ${item.name}`}
-                              >
-                                {downloadingFile === item.path ? 'Downloading…' : 'Download'}
-                              </Button>
-                              <Tooltip title="Delete file from GitHub">
-                                <span>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleDelete(item)}
-                                    disabled={deletingFile === item.path}
-                                    aria-label={`Delete ${item.name}`}
-                                  >
-                                    {deletingFile === item.path
-                                      ? <CircularProgress size={16} />
-                                      : <DeleteIcon color="error" />}
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
+                              {access?.download && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  startIcon={downloadingFile === item.path
+                                    ? <CircularProgress size={14} />
+                                    : <GetAppIcon />}
+                                  onClick={() => handleDownload(item)}
+                                  disabled={downloadingFile === item.path}
+                                  aria-label={`Download ${item.name}`}
+                                >
+                                  {downloadingFile === item.path ? 'Downloading…' : 'Download'}
+                                </Button>
+                              )}
+                              {access?.delete && (
+                                <Tooltip title="Delete file from GitHub">
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => handleDelete(item)}
+                                      disabled={deletingFile === item.path}
+                                      aria-label={`Delete ${item.name}`}
+                                    >
+                                      {deletingFile === item.path
+                                        ? <CircularProgress size={16} />
+                                        : <DeleteIcon color="error" />}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
                             </div>
                           )}
                         </TableCell>
@@ -548,7 +596,7 @@ export const FileUploadPage = () => {
             </Paper>
 
             {/* ── Right: upload ── */}
-            <Paper className={classes.resultPaper} variant="outlined">
+            {access?.upload && <Paper className={classes.resultPaper} variant="outlined">
               <div className={classes.sectionHeader}>
                 <div className={classes.sectionTitle}>
                   <CloudUploadIcon color="action" />
@@ -636,7 +684,7 @@ export const FileUploadPage = () => {
                   </Paper>
                 )}
               </div>
-            </Paper>
+            </Paper>}
 
           </div>
 
