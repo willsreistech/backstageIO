@@ -268,6 +268,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
         adminGroup,
         legacyPublisherGroup,
         'group:default/artifact-viewers',
+        'group:default/artifact-deleters',
         'group:default/artifact-downloaders',
         'group:default/artifact-uploaders',
       ],
@@ -290,6 +291,7 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
       config.getOptionalStringArray('fileUpload.access.deleteGroups') ?? [
         adminGroup,
         legacyPublisherGroup,
+        'group:default/artifact-deleters',
       ],
     ),
   };

@@ -82,6 +82,7 @@ integrations:
           privateKey: ${BACKSTAGE_GH_APP_PRIVATE_KEY}
           allowedInstallationOwners:
             - willsreistech
+            - willsreis
 
 # ── File Upload Plugin ─────────────────────────────────────────────────────
 # Configure private repository browsing, downloads and file updates.
@@ -100,6 +101,7 @@ fileUpload:
       - group:default/platform-admin
       - group:default/artifact-publisher
       - group:default/artifact-viewers
+      - group:default/artifact-deleters
       - group:default/artifact-downloaders
       - group:default/artifact-uploaders
     downloadGroups:
@@ -111,6 +113,7 @@ fileUpload:
       - group:default/artifact-publisher
       - group:default/artifact-uploaders
     deleteGroups:
+      - group:default/artifact-deleters
       - group:default/platform-admin
       - group:default/artifact-publisher
   maxFileSizeMb: 500
@@ -222,6 +225,16 @@ catalog:
     # (fora da raiz do repo, então a discovery NÃO encontra — mantém manual)
     - type: url
       target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
+      rules:
+        - allow: [Template]
+
+    # Terraform EKS pertence a outro owner, fora do discovery da organização.
+    - type: url
+      target: https://github.com/willsreis/terraform/blob/main/catalog-info.yaml
+      rules:
+        - allow: [Component, System, Resource]
+    - type: url
+      target: https://github.com/willsreis/terraform/blob/main/backstage/eks-templates.yaml
       rules:
         - allow: [Template]
 

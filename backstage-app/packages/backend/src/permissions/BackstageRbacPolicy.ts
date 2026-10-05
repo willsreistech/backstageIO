@@ -2,6 +2,8 @@ import {
   AuthorizeResult,
   isPermission,
   type PolicyDecision,
+  type PermissionCriteria,
+  type PermissionCondition,
 } from '@backstage/plugin-permission-common';
 import {
   type PermissionPolicy,
@@ -31,6 +33,9 @@ export const RBAC_GROUPS = {
   artifactViewers: 'group:default/artifact-viewers',
   artifactDownloaders: 'group:default/artifact-downloaders',
   artifactUploaders: 'group:default/artifact-uploaders',
+  artifactDeleters: 'group:default/artifact-deleters',
+  eksDeployers: 'group:default/eks-deployers',
+  eksDestroyers: 'group:default/eks-destroyers',
   clusterCreators: 'group:default/cluster-creators',
   clusterDeleters: 'group:default/cluster-deleters',
   platformAdmins: 'group:default/platform-admin',
@@ -38,17 +43,43 @@ export const RBAC_GROUPS = {
   legacyArtifactPublishers: 'group:default/artifact-publisher',
 } as const;
 
-const CLUSTER_TAGS = {
-  create: 'cluster-create',
-  delete: 'cluster-delete',
-  status: 'cluster-status',
-} as const;
-
-const CLUSTER_WORKFLOWS = {
-  create: 'setup-cluster.yml',
-  delete: 'teardown-cluster.yml',
-  status: 'cluster-status.yml',
-} as const;
+// Keep repository, workflow and group together to prevent cross-repository grants.
+const WORKFLOW_GRANTS = [
+  {
+    repo: 'k9',
+    owner: 'willsreistech',
+    workflow: 'cluster-status.yml',
+    tag: 'cluster-status',
+  },
+  {
+    repo: 'k9',
+    owner: 'willsreistech',
+    workflow: 'setup-cluster.yml',
+    tag: 'cluster-create',
+    group: RBAC_GROUPS.clusterCreators,
+  },
+  {
+    repo: 'k9',
+    owner: 'willsreistech',
+    workflow: 'teardown-cluster.yml',
+    tag: 'cluster-delete',
+    group: RBAC_GROUPS.clusterDeleters,
+  },
+  {
+    repo: 'terraform',
+    owner: 'willsreis',
+    workflow: 'terraform-deploy.yml',
+    tag: 'eks-deploy',
+    group: RBAC_GROUPS.eksDeployers,
+  },
+  {
+    repo: 'terraform',
+    owner: 'willsreis',
+    workflow: 'terraform-destroy.yml',
+    tag: 'eks-destroy',
+    group: RBAC_GROUPS.eksDestroyers,
+  },
+];
 
 const allow = (): PolicyDecision => ({ result: AuthorizeResult.ALLOW });
 const deny = (): PolicyDecision => ({ result: AuthorizeResult.DENY });
@@ -84,6 +115,9 @@ export class BackstageRbacPolicy implements PermissionPolicy {
       RBAC_GROUPS.artifactViewers,
       RBAC_GROUPS.artifactDownloaders,
       RBAC_GROUPS.artifactUploaders,
+      RBAC_GROUPS.artifactDeleters,
+      RBAC_GROUPS.eksDeployers,
+      RBAC_GROUPS.eksDestroyers,
       RBAC_GROUPS.clusterCreators,
       RBAC_GROUPS.clusterDeleters,
       RBAC_GROUPS.legacyArtifactPublishers,
@@ -127,78 +161,64 @@ export class BackstageRbacPolicy implements PermissionPolicy {
       isPermission(request.permission, templateParameterReadPermission) ||
       isPermission(request.permission, templateStepReadPermission)
     ) {
-      const allowedTags: string[] = [CLUSTER_TAGS.status];
-      if (groups.has(RBAC_GROUPS.clusterCreators)) {
-        allowedTags.push(CLUSTER_TAGS.create);
-      }
-      if (groups.has(RBAC_GROUPS.clusterDeleters)) {
-        allowedTags.push(CLUSTER_TAGS.delete);
-      }
-
-      const [firstAllowedTag, ...additionalAllowedTags] = allowedTags;
+      const grants = WORKFLOW_GRANTS.filter(
+        grant => !grant.group || groups.has(grant.group),
+      );
+      const deniedGrants = WORKFLOW_GRANTS.filter(
+        grant => !grants.includes(grant),
+      );
+      if (deniedGrants.length === 0) return allow();
+      const [first, ...rest] = deniedGrants;
       return createScaffolderTemplateConditionalDecision(request.permission, {
-        anyOf: [
-          // Preserve unrelated, untagged template fields and steps.
-          {
-            not: {
-              anyOf: [
-                scaffolderTemplateConditions.hasTag({
-                  tag: CLUSTER_TAGS.create,
-                }),
-                scaffolderTemplateConditions.hasTag({
-                  tag: CLUSTER_TAGS.delete,
-                }),
-                scaffolderTemplateConditions.hasTag({
-                  tag: CLUSTER_TAGS.status,
-                }),
-              ],
-            },
-          },
-          scaffolderTemplateConditions.hasTag({ tag: firstAllowedTag }),
-          ...additionalAllowedTags.map(tag =>
-            scaffolderTemplateConditions.hasTag({ tag }),
-          ),
+        allOf: [
+          { not: scaffolderTemplateConditions.hasTag({ tag: first.tag }) },
+          ...rest.map(grant => ({
+            not: scaffolderTemplateConditions.hasTag({ tag: grant.tag }),
+          })),
         ],
       });
     }
 
     if (isPermission(request.permission, actionExecutePermission)) {
-      const allowedWorkflows: string[] = [CLUSTER_WORKFLOWS.status];
-      if (groups.has(RBAC_GROUPS.clusterCreators)) {
-        allowedWorkflows.push(CLUSTER_WORKFLOWS.create);
-      }
-      if (groups.has(RBAC_GROUPS.clusterDeleters)) {
-        allowedWorkflows.push(CLUSTER_WORKFLOWS.delete);
-      }
-
-      const [firstAllowedWorkflow, ...additionalAllowedWorkflows] =
-        allowedWorkflows;
+      const grants = WORKFLOW_GRANTS.filter(
+        grant => !grant.group || groups.has(grant.group),
+      );
+      const workflowConditions = grants.map(
+        (
+          grant,
+        ): PermissionCriteria<PermissionCondition<'scaffolder-action'>> => ({
+          allOf: [
+            scaffolderActionConditions.hasStringProperty({
+              key: 'repoUrl',
+              value: `github.com?owner=${grant.owner}&repo=${grant.repo}`,
+            }),
+            scaffolderActionConditions.hasStringProperty({
+              key: 'workflowId',
+              value: grant.workflow,
+            }),
+            ...(grant.tag === 'eks-destroy'
+              ? [
+                  scaffolderActionConditions.hasStringProperty({
+                    key: 'workflowInputs.confirmation',
+                    value: 'DESTROY',
+                  }),
+                ]
+              : []),
+          ],
+        }),
+      );
+      const [first, ...rest] = workflowConditions;
       return createScaffolderActionConditionalDecision(request.permission, {
         allOf: [
           scaffolderActionConditions.hasActionId({
             actionId: 'github:actions:dispatch',
           }),
           scaffolderActionConditions.hasStringProperty({
-            key: 'repoUrl',
-            value: 'github.com?owner=willsreistech&repo=k9',
-          }),
-          scaffolderActionConditions.hasStringProperty({
             key: 'branchOrTagName',
             value: 'main',
           }),
           {
-            anyOf: [
-              scaffolderActionConditions.hasStringProperty({
-                key: 'workflowId',
-                value: firstAllowedWorkflow,
-              }),
-              ...additionalAllowedWorkflows.map(workflowId =>
-                scaffolderActionConditions.hasStringProperty({
-                  key: 'workflowId',
-                  value: workflowId,
-                }),
-              ),
-            ],
+            anyOf: [first, ...rest],
           },
         ],
       });

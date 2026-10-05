@@ -204,14 +204,55 @@ para renovar a identidade do Backstage.
 | `artifact-viewers` | Navegar por repositórios e arquivos |
 | `artifact-downloaders` | Navegar e baixar arquivos |
 | `artifact-uploaders` | Navegar e enviar/atualizar arquivos; não excluir |
-| `cluster-creators` | Consultar status e executar `setup-cluster.yml` |
-| `cluster-deleters` | Consultar status e executar `teardown-cluster.yml` |
+| `artifact-deleters` | Navegar e excluir arquivos, sem conceder deploy ou destruição de clusters |
+| `eks-deployers` | Criar/atualizar o EKS dev via `willsreis/terraform`, workflow `terraform-deploy.yml` |
+| `eks-destroyers` | Destruir o EKS dev via `terraform-destroy.yml`, com confirmação `DESTROY` |
+| `cluster-creators` | Consultar status e criar clusters Kind do k9 via `setup-cluster.yml` |
+| `cluster-deleters` | Consultar status e remover clusters Kind do k9 via `teardown-cluster.yml` |
 | `platform-admin` | Acesso total |
 | `artifact-publisher` | Grupo legado com acesso completo aos artefatos durante a migração |
 
+Os grupos são cumulativos e independentes. Em **Keycloak → realm backstage →
+Users → usuário → Groups → Join**, selecione os grupos correspondentes:
+
+- **Pedrinho:** `backstage-users` + `artifact-viewers` + `artifact-uploaders`.
+- **Zezinho:** os mesmos grupos + `artifact-deleters`.
+- **Operador EKS:** `backstage-users` + `eks-deployers`; acrescente
+  `eks-destroyers` somente se também puder destruir o ambiente.
+
+Pedrinho e Zezinho não recebem `cluster-creators`, `cluster-deleters`,
+`eks-deployers`, `eks-destroyers` nem `platform-admin`. Download é uma permissão
+separada: adicione `artifact-downloaders` quando necessário. Não use
+`artifact-publisher` para essas contas: o grupo legado concede todas as operações
+de arquivos. Aguarde a sincronização de até cinco minutos e faça novo login no
+Backstage após alterar os grupos.
+
+
 Uma conta sincronizada sem nenhum desses grupos consegue autenticar, mas suas
-operações permissionadas são negadas. Exclusão de artefatos fica limitada a
-`platform-admin` e ao grupo legado `artifact-publisher`.
+operações permissionadas são negadas. Exclusão de artefatos exige
+`artifact-deleters`, `platform-admin` ou o grupo legado `artifact-publisher`.
+
+### Terraform EKS junto com k9
+
+Os templates existentes do k9 continuam registrados. O projeto
+`willsreis/terraform` aparece como `component:default/terraform-eks`, com templates
+para deploy e destruição do ambiente dev. O deploy usa o workflow existente, com
+estimativa de custos e OIDC; o Backstage não recebe credenciais AWS.
+
+A GitHub App precisa estar instalada em `willsreis/terraform` com `Contents: Read`
+e `Actions: Read and write`. A configuração permite instalações de `willsreistech`
+e `willsreis`. As locations do Terraform estão na configuração base e na de deploy,
+pois a lista do último arquivo substitui a anterior. Não adicione o Terraform ao
+gerenciador de arquivos como forma de liberar execução: as permissões são separadas.
+
+O backend autoriza cada combinação de repositório, workflow e branch `main`.
+Permissões de Kind não liberam EKS, e permissões de upload/delete não liberam
+nenhum deploy. A confirmação `DESTROY` também é verificada pelo backend e pelo
+workflow. A conclusão da tarefa no Backstage indica o envio da solicitação;
+acompanhe a execução real e eventuais aprovações do environment no GitHub Actions.
+
+Consulte o [guia de integração](https://github.com/willsreis/terraform/blob/main/docs/backstage.md)
+para a ordem de publicação e verificação.
 
 ---
 

@@ -3,8 +3,8 @@
 # Por que existe: no Backstage, quando várias configs são carregadas, as LISTAS
 # são SUBSTITUÍDAS (não concatenadas). A app-config.production.yaml define
 # `catalog.locations` só com os exemplos, o que APAGARIA o k9. Aqui redefinimos
-# a lista COMPLETA (exemplos + k9), e como esta é a última config carregada, ela
-# vence.
+# a lista COMPLETA (exemplos + k9 + Terraform EKS). Por ser a última config
+# carregada, esta lista vence.
 #
 # Este arquivo é montado read-only em /app/app-config.deploy.yaml pelo compose,
 # então não precisa entrar na imagem.
@@ -110,5 +110,15 @@ catalog:
     # Template Scaffolder (fora da raiz do repo → discovery não encontra):
     - type: url
       target: https://github.com/willsreistech/k9/blob/main/backstage/create-cluster-template.yaml
+      rules:
+        - allow: [Template]
+
+    # Terraform EKS pertence a outro owner, fora do discovery da organização.
+    - type: url
+      target: https://github.com/willsreis/terraform/blob/main/catalog-info.yaml
+      rules:
+        - allow: [Component, System, Resource]
+    - type: url
+      target: https://github.com/willsreis/terraform/blob/main/backstage/eks-templates.yaml
       rules:
         - allow: [Template]
