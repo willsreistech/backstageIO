@@ -26,6 +26,14 @@ backend:
           catalog-backend-module-keycloak:
             onPluginModuleBootFailure: continue
 
+# Esta config é carregada por último. A lista abaixo limita a exclusão mesmo
+# quando a imagem ainda contém a configuração antiga de artifact-publisher.
+fileUpload:
+  access:
+    deleteGroups:
+      - group:default/artifact-deleters
+      - group:default/platform-admin
+
 # ── Auth: Keycloak (OIDC) ────────────────────────────────────────────────────
 # Keycloak do lab roda em um compose separado, ligado à rede Docker
 # `backstage-auth`. O hostname público continua sendo usado pelo navegador;

@@ -71,6 +71,21 @@ describe('artifact operation authorization', () => {
       { view: true, download: false, upload: false, delete: true },
     ],
     [
+      'legacy publisher',
+      ['artifact-publisher'],
+      { view: true, download: true, upload: true, delete: false },
+    ],
+    [
+      'legacy publisher with EKS permissions',
+      ['artifact-publisher', 'artifact-viewers', 'eks-deployers', 'eks-destroyers'],
+      { view: true, download: true, upload: true, delete: false },
+    ],
+    [
+      'platform admin',
+      ['platform-admin'],
+      { view: true, download: true, upload: true, delete: true },
+    ],
+    [
       'EKS deployer',
       ['eks-deployers'],
       { view: false, download: false, upload: false, delete: false },

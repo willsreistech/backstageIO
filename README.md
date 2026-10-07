@@ -210,7 +210,7 @@ para renovar a identidade do Backstage.
 | `cluster-creators` | Consultar status e criar clusters Kind do k9 via `setup-cluster.yml` |
 | `cluster-deleters` | Consultar status e remover clusters Kind do k9 via `teardown-cluster.yml` |
 | `platform-admin` | Acesso total |
-| `artifact-publisher` | Grupo legado com acesso completo aos artefatos durante a migração |
+| `artifact-publisher` | Grupo legado: navegar, baixar e enviar/atualizar arquivos; sem exclusão |
 
 Os grupos são cumulativos e independentes. Em **Keycloak → realm backstage →
 Users → usuário → Groups → Join**, selecione os grupos correspondentes:
@@ -223,14 +223,14 @@ Users → usuário → Groups → Join**, selecione os grupos correspondentes:
 Pedrinho e Zezinho não recebem `cluster-creators`, `cluster-deleters`,
 `eks-deployers`, `eks-destroyers` nem `platform-admin`. Download é uma permissão
 separada: adicione `artifact-downloaders` quando necessário. Não use
-`artifact-publisher` para essas contas: o grupo legado concede todas as operações
-de arquivos. Aguarde a sincronização de até cinco minutos e faça novo login no
+`artifact-publisher` para essas contas: use os grupos específicos para cada
+operação. Aguarde a sincronização de até cinco minutos e faça novo login no
 Backstage após alterar os grupos.
 
 
 Uma conta sincronizada sem nenhum desses grupos consegue autenticar, mas suas
 operações permissionadas são negadas. Exclusão de artefatos exige
-`artifact-deleters`, `platform-admin` ou o grupo legado `artifact-publisher`.
+`artifact-deleters` ou `platform-admin`; `artifact-publisher` não autoriza exclusão.
 
 ### Terraform EKS junto com k9
 

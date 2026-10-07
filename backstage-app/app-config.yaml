@@ -95,7 +95,8 @@ fileUpload:
     # acessíveis ao GitHub App implicitamente.
     allowedRepos: ${GITHUB_ALLOWED_REPOS}
   # RBAC por operação. As relações User -> Group vêm do Keycloak via catálogo.
-  # `artifact-publisher` é legado e mantém acesso completo durante a migração.
+  # `artifact-publisher` é legado para leitura, download e envio; exclusão
+  # exige `artifact-deleters` (ou `platform-admin`).
   access:
     viewGroups:
       - group:default/platform-admin
@@ -115,7 +116,6 @@ fileUpload:
     deleteGroups:
       - group:default/artifact-deleters
       - group:default/platform-admin
-      - group:default/artifact-publisher
   maxFileSizeMb: 500
   lfs:
     # Files larger than this (MB) are automatically sent via Git LFS

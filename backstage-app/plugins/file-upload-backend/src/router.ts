@@ -290,7 +290,6 @@ export async function createRouter(options: RouterOptions): Promise<Router> {
     delete: new Set(
       config.getOptionalStringArray('fileUpload.access.deleteGroups') ?? [
         adminGroup,
-        legacyPublisherGroup,
         'group:default/artifact-deleters',
       ],
     ),
